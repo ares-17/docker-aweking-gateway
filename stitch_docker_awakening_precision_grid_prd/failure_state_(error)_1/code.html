@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Docker Awakening - Failure State</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&amp;family=Space+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#003f8c",
+                        "accent-blue": "#2496ed",
+                        "technical-red": "#d63384",
+                        "background-light": "#f8f9fa",
+                        "background-dark": "#0d1117",
+                        "surface-light": "#ffffff",
+                        "surface-dark": "#161b22",
+                        "text-light": "#212529",
+                        "text-dark": "#c9d1d9",
+                        "border-light": "#e9ecef",
+                        "border-dark": "#30363d",
+                    },
+                    fontFamily: {
+                        "display": ["Space Grotesk", "sans-serif"],
+                        "mono": ["JetBrains Mono", "monospace"],
+                    },
+                    borderRadius: {
+                        "DEFAULT": "4px",
+                        "sm": "2px",
+                        "md": "4px",
+                        "lg": "8px",
+                    },
+                    backgroundImage: {
+                        'grid-light': "linear-gradient(to right, #e9ecef 1px, transparent 1px), linear-gradient(to bottom, #e9ecef 1px, transparent 1px)",
+                        'grid-dark': "linear-gradient(to right, rgba(255,255,255, 0.05) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255, 0.05) 1px, transparent 1px)",
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .bg-technical-grid {
+            background-size: 20px 20px;
+        }
+        .cursor-blink {
+            animation: blink 1s step-end infinite;
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+    </style>
+</head>
+<body class="bg-background-dark text-text-dark font-display min-h-screen flex flex-col relative overflow-hidden transition-colors duration-200">
+<div class="absolute inset-0 z-0 pointer-events-none bg-technical-grid bg-grid-dark"></div>
+<main class="relative z-10 flex-grow flex items-center justify-center p-4">
+<div class="w-full max-w-[600px] bg-surface-dark border border-technical-red shadow-[0_1px_3px_0_rgba(0,0,0,0.1),0_1px_2px_0_rgba(0,0,0,0.06)] rounded flex flex-col overflow-hidden">
+<div class="px-6 pt-6 pb-2 flex items-center">
+<div class="inline-flex items-center gap-2 px-3 py-1 border border-technical-red/20 bg-technical-red/10 rounded-sm">
+<span class="material-symbols-outlined text-[14px] text-technical-red animate-pulse">error</span>
+<span class="font-mono text-xs font-medium text-technical-red tracking-wide">STATUS: FAILED</span>
+</div>
+</div>
+<div class="px-6 py-4 flex flex-col items-center gap-8">
+<div aria-hidden="true" class="relative w-16 h-16 border-2 border-dashed border-technical-red/50 flex flex-wrap content-center justify-center gap-1 p-2 rounded-sm">
+<div class="w-1 h-1 bg-technical-red rounded-[1px]"></div>
+<div class="w-1 h-1 bg-technical-red/50 rounded-[1px]"></div>
+<div class="w-1 h-1 bg-technical-red rounded-[1px]"></div>
+<div class="w-1 h-1 bg-technical-red/30 rounded-[1px]"></div>
+<div class="w-1 h-1 bg-technical-red rounded-[1px]"></div>
+<div class="w-1 h-1 bg-technical-red/60 rounded-[1px]"></div>
+</div>
+<div class="text-center w-full">
+<h1 class="text-2xl font-bold tracking-tight mb-2 text-white">System Malfunction</h1>
+<p class="text-slate-400 text-sm font-mono mb-6">The container spin-up process encountered a critical error.</p>
+<div class="w-full bg-black rounded-sm p-4 text-left font-mono text-xs leading-relaxed border border-border-dark shadow-inner">
+<div class="flex gap-1.5 mb-3 border-b border-white/10 pb-2">
+<div class="w-2 h-2 rounded-full bg-red-500/40"></div>
+<div class="w-2 h-2 rounded-full bg-yellow-500/40"></div>
+<div class="w-2 h-2 rounded-full bg-green-500/40"></div>
+</div>
+<div class="space-y-1">
+<div class="text-green-400 flex gap-2">
+<span class="opacity-50">&gt;</span>
+<span>init process... OK</span>
+</div>
+<div class="text-green-400 flex gap-2">
+<span class="opacity-50">&gt;</span>
+<span>verifying config... OK</span>
+</div>
+<div class="text-red-400 flex gap-2">
+<span class="opacity-50">&gt;</span>
+<span>mounting volume... ERR</span>
+</div>
+<div class="text-red-500 font-bold flex gap-2 mt-2">
+<span class="opacity-50">&gt;</span>
+<span>Error: E_VOL_MOUNT_TIMEOUT<span class="cursor-blink">_</span></span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="px-6 pb-6 pt-2 flex justify-center w-full flex-col items-center">
+<button class="group w-full sm:w-auto min-w-[200px] flex items-center justify-center gap-2 px-6 py-2.5 border border-slate-600 rounded-sm text-sm font-bold tracking-wide hover:bg-white hover:text-black transition-all duration-200 text-text-dark">
+<span class="material-symbols-outlined text-[18px]">refresh</span>
+<span>RETRY SEQUENCE</span>
+</button>
+</div>
+<div class="h-1 w-full bg-technical-red/20">
+<div class="h-full w-2/3 bg-technical-red"></div>
+</div>
+</div>
+</main>
+<footer class="relative z-10 w-full py-4 text-center">
+<div class="font-mono text-[10px] text-slate-500 opacity-60">
+<span class="mx-2">instance-id: i-098f6bcd</span>
+<span class="text-slate-700">|</span>
+<span class="mx-2">err-code: 0x54F</span>
+</div>
+</footer>
+
+</body></html>
