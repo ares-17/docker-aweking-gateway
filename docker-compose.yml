@@ -1,0 +1,19 @@
+services:
+  # The Awakening Gateway
+  gateway:
+    build: .
+    container_name: docker-gateway
+    ports:
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - PORT=8080
+      - TARGET_PORT=80
+    restart: unless-stopped
+
+  # Test target container — starts stopped so the gateway can awaken it
+  whoami-test:
+    image: traefik/whoami
+    container_name: whoami-test
+    # Do NOT add restart policy — we want it to stay stopped until the gateway wakes it

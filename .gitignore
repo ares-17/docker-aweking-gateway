@@ -1,1 +1,25 @@
+# Binaries
+docker-gateway
+*.exe
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Dependencies
+vendor/
+
+# Test/debug
+*.test
+*.prof
+*.out
+
+# Mockup screenshots
 *.png
