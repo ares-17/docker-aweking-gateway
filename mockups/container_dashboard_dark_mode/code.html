@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Docker Awakening Gateway Dashboard</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#2b75ee",
+                        "background-dark": "#0d1117",
+                        "card-dark": "#161b22",
+                        "border-dark": "#30363d",
+                        "status-running": "#238636",
+                        "status-error": "#da3633",
+                        "status-stopped": "#8b949e",
+                        "status-starting": "#d29922",
+                        "status-awakening": "#2b75ee",
+                    },
+                    fontFamily: {
+                        "display": ["Space Grotesk", "sans-serif"],
+                        "mono": ["JetBrains Mono", "monospace"],
+                    },
+                    borderRadius: { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px" },
+                },
+            },
+        }
+    </script>
+</head>
+<body class="bg-background-dark text-slate-300 font-display min-h-screen flex flex-col">
+<header class="border-b border-border-dark bg-card-dark px-6 py-4 sticky top-0 z-50">
+<div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+<div class="flex items-center gap-3">
+<div class="bg-primary/20 p-2 rounded-lg text-primary">
+<span class="material-symbols-outlined text-2xl">deployed_code</span>
+</div>
+<div>
+<h1 class="text-white text-xl font-bold tracking-tight">Docker Awakening Gateway</h1>
+<p class="text-xs text-slate-500 font-mono">v2.4.0-edge • production-cluster-01</p>
+</div>
+</div>
+<div class="flex items-center gap-2 bg-background-dark/50 p-1.5 rounded-lg border border-border-dark overflow-x-auto max-w-full">
+<div class="flex items-center gap-2 px-3 py-1 rounded bg-card-dark border border-border-dark min-w-fit">
+<span class="w-2 h-2 rounded-full bg-slate-400"></span>
+<span class="text-xs font-bold text-white font-mono">5 Total</span>
+</div>
+<div class="flex items-center gap-2 px-3 py-1 rounded bg-card-dark border border-border-dark min-w-fit">
+<span class="w-2 h-2 rounded-full bg-status-running"></span>
+<span class="text-xs font-bold text-status-running font-mono">3 Running</span>
+</div>
+<div class="flex items-center gap-2 px-3 py-1 rounded bg-card-dark border border-border-dark min-w-fit">
+<span class="w-2 h-2 rounded-full bg-status-starting"></span>
+<span class="text-xs font-bold text-status-starting font-mono">1 Idle</span>
+</div>
+<div class="flex items-center gap-2 px-3 py-1 rounded bg-card-dark border border-border-dark min-w-fit">
+<span class="w-2 h-2 rounded-full bg-status-stopped"></span>
+<span class="text-xs font-bold text-status-stopped font-mono">1 Stopped</span>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="hidden lg:flex flex-col items-end text-xs text-slate-500 font-mono">
+<span>Last Updated</span>
+<span class="text-slate-300">14:02:45 UTC</span>
+</div>
+<button class="p-2 rounded-lg hover:bg-border-dark text-slate-400 hover:text-white transition-colors">
+<span class="material-symbols-outlined">refresh</span>
+</button>
+<div class="h-6 w-px bg-border-dark"></div>
+<button class="p-2 rounded-lg bg-border-dark text-white">
+<span class="material-symbols-outlined text-sm">dark_mode</span>
+</button>
+</div>
+</div>
+</header>
+<main class="flex-grow p-6">
+<div class="max-w-7xl mx-auto">
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+<div class="group bg-card-dark border border-border-dark rounded-xl p-5 hover:border-slate-600 transition-colors shadow-lg shadow-black/20 flex flex-col">
+<div class="flex justify-between items-start mb-4">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-[#336791]/20 flex items-center justify-center text-[#336791] border border-[#336791]/30">
+<span class="material-symbols-outlined">database</span>
+</div>
+<div>
+<h3 class="text-white font-mono font-bold text-sm tracking-wide">postgres-db-01</h3>
+<p class="text-xs text-slate-500 font-mono">postgres:14-alpine</p>
+</div>
+</div>
+<span class="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-status-running/10 text-status-running border border-status-running/20 flex items-center gap-1.5">
+<span class="w-1.5 h-1.5 rounded-full bg-status-running"></span>
+                            Running
+                        </span>
+</div>
+<div class="mb-5">
+<div class="flex justify-between text-[10px] text-slate-500 font-mono mb-1.5">
+<span>History (1h)</span>
+<span>99.9%</span>
+</div>
+<div class="flex gap-[2px] h-8 items-end">
+<div class="w-1.5 bg-status-running/40 h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running/40 h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running/40 h-3/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running/40 h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running/40 h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-error h-2/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+</div>
+</div>
+<div class="grid grid-cols-3 gap-2 mb-5">
+<div class="bg-background-dark/50 rounded p-2 border border-border-dark">
+<p class="text-[10px] text-slate-500 uppercase font-mono mb-1">Uptime</p>
+<p class="text-white font-mono font-medium text-sm">4d 2h</p>
+</div>
+<div class="bg-background-dark/50 rounded p-2 border border-border-dark">
+<p class="text-[10px] text-slate-500 uppercase font-mono mb-1">Last Req</p>
+<p class="text-white font-mono font-medium text-sm">2ms</p>
+</div>
+<div class="bg-background-dark/50 rounded p-2 border border-border-dark">
+<p class="text-[10px] text-slate-500 uppercase font-mono mb-1">Timeout</p>
+<p class="text-white font-mono font-medium text-sm">300s</p>
+</div>
+</div>
+<div class="mt-auto border-t border-border-dark pt-3 flex justify-between items-center">
+<div class="flex items-center gap-4 text-xs text-slate-500 font-mono">
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">lan</span> 5432</span>
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">memory</span> 120mb</span>
+</div>
+</div>
+</div>
+<div class="group bg-card-dark border border-border-dark rounded-xl p-5 hover:border-primary/50 transition-colors shadow-lg shadow-black/20 flex flex-col relative overflow-hidden">
+<div class="flex justify-between items-start mb-4 relative z-10">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-red-900/20 flex items-center justify-center text-red-500 border border-red-500/30">
+<span class="material-symbols-outlined">storage</span>
+</div>
+<div>
+<h3 class="text-white font-mono font-bold text-sm tracking-wide">redis-cache-main</h3>
+<p class="text-xs text-slate-500 font-mono">redis:7.0</p>
+</div>
+</div>
+<span class="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-status-awakening/10 text-status-awakening border border-status-awakening/20 flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[12px]">sync</span>
+                            Awakening
+                        </span>
+</div>
+<div class="mb-5 relative z-10">
+<div class="flex justify-between text-[10px] text-slate-500 font-mono mb-1.5">
+<span>History (1h)</span>
+<span>--</span>
+</div>
+<div class="flex gap-[2px] h-8 items-end">
+<div class="w-1.5 bg-status-stopped/30 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/30 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/30 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/30 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/30 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/30 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/30 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/30 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/30 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/30 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/30 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/30 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/30 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/30 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/30 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/30 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/30 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/30 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/30 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-awakening/40 h-2/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-awakening/60 h-3/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-awakening/80 h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-awakening h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-awakening h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-awakening h-full rounded-[1px]"></div>
+</div>
+</div>
+<div class="grid grid-cols-3 gap-2 mb-5 relative z-10">
+<div class="bg-background-dark/50 rounded p-2 border border-border-dark">
+<p class="text-[10px] text-slate-500 uppercase font-mono mb-1">Uptime</p>
+<p class="text-status-awakening font-mono font-medium text-sm">0s</p>
+</div>
+<div class="bg-background-dark/50 rounded p-2 border border-border-dark">
+<p class="text-[10px] text-slate-500 uppercase font-mono mb-1">Last Req</p>
+<p class="text-white font-mono font-medium text-sm">Now</p>
+</div>
+<div class="bg-background-dark/50 rounded p-2 border border-border-dark">
+<p class="text-[10px] text-slate-500 uppercase font-mono mb-1">Timeout</p>
+<p class="text-white font-mono font-medium text-sm">60s</p>
+</div>
+</div>
+<div class="mt-auto border-t border-border-dark pt-3 flex justify-between items-center relative z-10">
+<div class="flex items-center gap-4 text-xs text-slate-500 font-mono">
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">lan</span> 6379</span>
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">memory</span> --</span>
+</div>
+</div>
+</div>
+<div class="group bg-card-dark border border-border-dark rounded-xl p-5 hover:border-slate-600 transition-colors shadow-lg shadow-black/20 flex flex-col">
+<div class="flex justify-between items-start mb-4">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-green-900/20 flex items-center justify-center text-green-500 border border-green-500/30">
+<span class="material-symbols-outlined">dns</span>
+</div>
+<div>
+<h3 class="text-white font-mono font-bold text-sm tracking-wide">nginx-proxy</h3>
+<p class="text-xs text-slate-500 font-mono">nginx:latest</p>
+</div>
+</div>
+<span class="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-status-starting/10 text-status-starting border border-status-starting/20 flex items-center gap-1.5">
+<span class="w-1.5 h-1.5 rounded-full bg-status-starting"></span>
+                            Idle
+                        </span>
+</div>
+<div class="mb-5">
+<div class="flex justify-between text-[10px] text-slate-500 font-mono mb-1.5">
+<span>History (1h)</span>
+<span>100%</span>
+</div>
+<div class="flex gap-[2px] h-8 items-end opacity-70">
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-starting/60 h-3/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-starting/60 h-3/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-starting/60 h-3/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-starting/60 h-3/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-starting/60 h-3/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-starting/60 h-3/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-starting/60 h-3/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-starting/60 h-3/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-starting/60 h-3/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-starting/60 h-3/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-starting/60 h-3/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-starting/60 h-3/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-starting/60 h-3/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-starting h-3/4 rounded-[1px]"></div>
+</div>
+</div>
+<div class="grid grid-cols-3 gap-2 mb-5">
+<div class="bg-background-dark/50 rounded p-2 border border-border-dark">
+<p class="text-[10px] text-slate-500 uppercase font-mono mb-1">Uptime</p>
+<p class="text-white font-mono font-medium text-sm">12d 6h</p>
+</div>
+<div class="bg-background-dark/50 rounded p-2 border border-border-dark">
+<p class="text-[10px] text-slate-500 uppercase font-mono mb-1">Last Req</p>
+<p class="text-status-starting font-mono font-medium text-sm">45m</p>
+</div>
+<div class="bg-background-dark/50 rounded p-2 border border-border-dark">
+<p class="text-[10px] text-slate-500 uppercase font-mono mb-1">Timeout</p>
+<p class="text-white font-mono font-medium text-sm">60m</p>
+</div>
+</div>
+<div class="mt-auto border-t border-border-dark pt-3 flex justify-between items-center">
+<div class="flex items-center gap-4 text-xs text-slate-500 font-mono">
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">lan</span> 8080</span>
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">memory</span> 24mb</span>
+</div>
+</div>
+</div>
+<div class="group bg-card-dark border border-border-dark rounded-xl p-5 hover:border-slate-600 transition-colors shadow-lg shadow-black/20 flex flex-col opacity-75 hover:opacity-100">
+<div class="flex justify-between items-start mb-4">
+<div class="flex items-center gap-3 grayscale">
+<div class="w-10 h-10 rounded-lg bg-orange-900/20 flex items-center justify-center text-orange-500 border border-orange-500/30">
+<span class="material-symbols-outlined">monitoring</span>
+</div>
+<div>
+<h3 class="text-slate-400 font-mono font-bold text-sm tracking-wide">grafana-ui</h3>
+<p class="text-xs text-slate-600 font-mono">grafana:9.0</p>
+</div>
+</div>
+<span class="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-status-stopped/10 text-status-stopped border border-status-stopped/20 flex items-center gap-1.5">
+<span class="w-1.5 h-1.5 rounded-full bg-status-stopped"></span>
+                            Stopped
+                        </span>
+</div>
+<div class="mb-5">
+<div class="flex justify-between text-[10px] text-slate-600 font-mono mb-1.5">
+<span>History (1h)</span>
+<span>0%</span>
+</div>
+<div class="flex gap-[2px] h-8 items-end">
+<div class="w-1.5 bg-status-stopped/20 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/20 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/20 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/20 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/20 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/20 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/20 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/20 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/20 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/20 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/20 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/20 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/20 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/20 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/20 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/20 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/20 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/20 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/20 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/20 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/20 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/20 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/20 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped/20 h-1/4 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-stopped h-1/4 rounded-[1px]"></div>
+</div>
+</div>
+<div class="grid grid-cols-3 gap-2 mb-5">
+<div class="bg-background-dark/30 rounded p-2 border border-border-dark">
+<p class="text-[10px] text-slate-600 uppercase font-mono mb-1">Uptime</p>
+<p class="text-slate-400 font-mono font-medium text-sm">--</p>
+</div>
+<div class="bg-background-dark/30 rounded p-2 border border-border-dark">
+<p class="text-[10px] text-slate-600 uppercase font-mono mb-1">Last Req</p>
+<p class="text-slate-400 font-mono font-medium text-sm">2d ago</p>
+</div>
+<div class="bg-background-dark/30 rounded p-2 border border-border-dark">
+<p class="text-[10px] text-slate-600 uppercase font-mono mb-1">Timeout</p>
+<p class="text-slate-400 font-mono font-medium text-sm">300s</p>
+</div>
+</div>
+<div class="mt-auto border-t border-border-dark pt-3 flex justify-between items-center">
+<div class="flex items-center gap-4 text-xs text-slate-600 font-mono">
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">lan</span> 3000</span>
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">memory</span> 0mb</span>
+</div>
+</div>
+</div>
+<div class="group bg-card-dark border border-border-dark rounded-xl p-5 hover:border-slate-600 transition-colors shadow-lg shadow-black/20 flex flex-col">
+<div class="flex justify-between items-start mb-4">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-blue-900/20 flex items-center justify-center text-blue-500 border border-blue-500/30">
+<span class="material-symbols-outlined">home_iot_device</span>
+</div>
+<div>
+<h3 class="text-white font-mono font-bold text-sm tracking-wide">home-assistant</h3>
+<p class="text-xs text-slate-500 font-mono">homeassistant/home-assistant:stable</p>
+</div>
+</div>
+<span class="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-status-running/10 text-status-running border border-status-running/20 flex items-center gap-1.5">
+<span class="w-1.5 h-1.5 rounded-full bg-status-running"></span>
+                            Running
+                        </span>
+</div>
+<div class="mb-5">
+<div class="flex justify-between text-[10px] text-slate-500 font-mono mb-1.5">
+<span>History (1h)</span>
+<span>98.5%</span>
+</div>
+<div class="flex gap-[2px] h-8 items-end">
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-error h-1/2 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-error h-1/2 rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+</div>
+</div>
+<div class="grid grid-cols-3 gap-2 mb-5">
+<div class="bg-background-dark/50 rounded p-2 border border-border-dark">
+<p class="text-[10px] text-slate-500 uppercase font-mono mb-1">Uptime</p>
+<p class="text-white font-mono font-medium text-sm">22h 14m</p>
+</div>
+<div class="bg-background-dark/50 rounded p-2 border border-border-dark">
+<p class="text-[10px] text-slate-500 uppercase font-mono mb-1">Last Req</p>
+<p class="text-white font-mono font-medium text-sm">15s</p>
+</div>
+<div class="bg-background-dark/50 rounded p-2 border border-border-dark">
+<p class="text-[10px] text-slate-500 uppercase font-mono mb-1">Timeout</p>
+<p class="text-white font-mono font-medium text-sm">120s</p>
+</div>
+</div>
+<div class="mt-auto border-t border-border-dark pt-3 flex justify-between items-center">
+<div class="flex items-center gap-4 text-xs text-slate-500 font-mono">
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">lan</span> 8123</span>
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">memory</span> 450mb</span>
+</div>
+</div>
+</div>
+<div class="group bg-card-dark border border-border-dark rounded-xl p-5 hover:border-slate-600 transition-colors shadow-lg shadow-black/20 flex flex-col">
+<div class="flex justify-between items-start mb-4">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-cyan-900/20 flex items-center justify-center text-cyan-500 border border-cyan-500/30">
+<span class="material-symbols-outlined">widgets</span>
+</div>
+<div>
+<h3 class="text-white font-mono font-bold text-sm tracking-wide">portainer-ce</h3>
+<p class="text-xs text-slate-500 font-mono">portainer/portainer-ce:2.18</p>
+</div>
+</div>
+<span class="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-status-running/10 text-status-running border border-status-running/20 flex items-center gap-1.5">
+<span class="w-1.5 h-1.5 rounded-full bg-status-running"></span>
+                            Running
+                        </span>
+</div>
+<div class="mb-5">
+<div class="flex justify-between text-[10px] text-slate-500 font-mono mb-1.5">
+<span>History (1h)</span>
+<span>100%</span>
+</div>
+<div class="flex gap-[2px] h-8 items-end">
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+<div class="w-1.5 bg-status-running h-full rounded-[1px]"></div>
+</div>
+</div>
+<div class="grid grid-cols-3 gap-2 mb-5">
+<div class="bg-background-dark/50 rounded p-2 border border-border-dark">
+<p class="text-[10px] text-slate-500 uppercase font-mono mb-1">Uptime</p>
+<p class="text-white font-mono font-medium text-sm">30d 4h</p>
+</div>
+<div class="bg-background-dark/50 rounded p-2 border border-border-dark">
+<p class="text-[10px] text-slate-500 uppercase font-mono mb-1">Last Req</p>
+<p class="text-white font-mono font-medium text-sm">1h ago</p>
+</div>
+<div class="bg-background-dark/50 rounded p-2 border border-border-dark">
+<p class="text-[10px] text-slate-500 uppercase font-mono mb-1">Timeout</p>
+<p class="text-white font-mono font-medium text-sm">900s</p>
+</div>
+</div>
+<div class="mt-auto border-t border-border-dark pt-3 flex justify-between items-center">
+<div class="flex items-center gap-4 text-xs text-slate-500 font-mono">
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">lan</span> 9000</span>
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">memory</span> 64mb</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+
+</body></html>

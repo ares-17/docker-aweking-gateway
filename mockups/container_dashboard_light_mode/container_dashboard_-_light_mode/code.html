@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Docker Awakening Gateway - Monitoring Dashboard</title>
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Theme Configuration -->
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#0d48a5",
+                        "primary-content": "#ffffff",
+                        "secondary": "#475569",
+                        "background-light": "#f8fafc",
+                        "background-dark": "#101722",
+                        "surface": "#ffffff",
+                        "surface-border": "#e2e8f0",
+                        "success": "#22c55e",
+                        "error": "#ef4444",
+                        "warning": "#f59e0b",
+                        "neutral-gray": "#94a3b8",
+                    },
+                    fontFamily: {
+                        "display": ["Space Grotesk", "sans-serif"],
+                        "mono": ["JetBrains Mono", "monospace"],
+                        "sans": ["Space Grotesk", "sans-serif"],
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.25rem", // 4px
+                        "lg": "0.5rem",      // 8px
+                        "xl": "0.75rem",     // 12px
+                        "full": "9999px",
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            font-family: "Space Grotesk", sans-serif;
+            background-color: #f8fafc;
+        }
+        .font-mono {
+            font-family: "JetBrains Mono", monospace;
+        }
+        /* Custom scrollbar for webkit */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8; 
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 min-h-screen flex flex-col">
+<!-- Top Navigation Bar -->
+<header class="sticky top-0 z-50 bg-surface/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-surface-border dark:border-slate-800">
+<div class="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
+<div class="flex items-center justify-between h-16">
+<!-- Left: Title & Logo -->
+<div class="flex items-center gap-3">
+<div class="text-primary dark:text-blue-400">
+<span class="material-symbols-outlined !text-[32px]">deployed_code</span>
+</div>
+<div>
+<h1 class="text-lg font-bold tracking-tight text-slate-900 dark:text-white leading-none">
+                            Docker Awakening Gateway
+                        </h1>
+<p class="text-xs text-slate-500 dark:text-slate-400 font-medium mt-1">Edge Node: alpha-01</p>
+</div>
+</div>
+<!-- Middle: Global Stats -->
+<div class="hidden md:flex items-center gap-6">
+<div class="flex items-center gap-2 px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-full border border-slate-200 dark:border-slate-700">
+<span class="w-2 h-2 rounded-full bg-success animate-pulse"></span>
+<span class="text-xs font-bold text-slate-700 dark:text-slate-300">System Healthy</span>
+</div>
+<div class="flex gap-4 text-xs font-mono text-slate-500 dark:text-slate-400">
+<span><strong class="text-slate-900 dark:text-slate-200">12</strong> Running</span>
+<span><strong class="text-slate-900 dark:text-slate-200">2</strong> Stopped</span>
+<span><strong class="text-primary dark:text-blue-400">1</strong> Awakening</span>
+</div>
+</div>
+<!-- Right: Actions & Time -->
+<div class="flex items-center gap-4">
+<div class="text-right hidden sm:block">
+<p class="text-xs text-slate-500 font-mono">Last Update</p>
+<p class="text-sm font-bold font-mono text-slate-900 dark:text-white">14:02:33</p>
+</div>
+<div class="h-8 w-[1px] bg-slate-200 dark:bg-slate-700 mx-1 hidden sm:block"></div>
+<button class="p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors rounded hover:bg-slate-100 dark:hover:bg-slate-800">
+<span class="material-symbols-outlined !text-[20px]">refresh</span>
+</button>
+<button class="p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors rounded hover:bg-slate-100 dark:hover:bg-slate-800">
+<span class="material-symbols-outlined !text-[20px]">settings</span>
+</button>
+<!-- Dark Mode Toggle Visual -->
+<button class="p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors rounded hover:bg-slate-100 dark:hover:bg-slate-800">
+<span class="material-symbols-outlined !text-[20px]">dark_mode</span>
+</button>
+</div>
+</div>
+</div>
+</header>
+<!-- Main Content -->
+<main class="flex-grow p-4 sm:p-6 lg:p-8 max-w-[1400px] mx-auto w-full">
+<!-- Summary Cards Mobile Only -->
+<div class="md:hidden grid grid-cols-2 gap-4 mb-6">
+<div class="bg-surface dark:bg-slate-800 p-4 rounded border border-surface-border dark:border-slate-700 shadow-sm">
+<p class="text-xs text-slate-500 font-medium uppercase tracking-wider">Running</p>
+<p class="text-2xl font-bold text-slate-900 dark:text-white font-mono mt-1">12</p>
+</div>
+<div class="bg-surface dark:bg-slate-800 p-4 rounded border border-surface-border dark:border-slate-700 shadow-sm">
+<p class="text-xs text-slate-500 font-medium uppercase tracking-wider">Awakening</p>
+<p class="text-2xl font-bold text-primary dark:text-blue-400 font-mono mt-1">1</p>
+</div>
+</div>
+<!-- Dashboard Grid -->
+<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+<!-- Card 1: Active (Nginx) -->
+<article class="group bg-surface dark:bg-slate-800 rounded-lg border border-surface-border dark:border-slate-700 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col h-full">
+<!-- Header -->
+<div class="p-5 border-b border-surface-border/50 dark:border-slate-700/50 flex items-start justify-between">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300">
+<span class="material-symbols-outlined">dns</span>
+</div>
+<div>
+<h3 class="font-mono font-bold text-lg text-slate-900 dark:text-white group-hover:text-primary transition-colors">nginx-proxy</h3>
+<span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-bold bg-success/10 text-success border border-success/20">
+<span class="w-1.5 h-1.5 rounded-full bg-success"></span>
+                                RUNNING
+                            </span>
+</div>
+</div>
+<button class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+<span class="material-symbols-outlined !text-[20px]">more_vert</span>
+</button>
+</div>
+<!-- Heartbeat Visualization -->
+<div class="px-5 pt-5 pb-2">
+<div class="flex items-end justify-between gap-[2px] h-8 w-full">
+<!-- Generating 35 bars -->
+<div class="w-1.5 bg-success/30 rounded-sm h-[40%]"></div><div class="w-1.5 bg-success/40 rounded-sm h-[50%]"></div><div class="w-1.5 bg-success/50 rounded-sm h-[60%]"></div><div class="w-1.5 bg-success rounded-sm h-[80%]"></div><div class="w-1.5 bg-success rounded-sm h-[70%]"></div>
+<div class="w-1.5 bg-success rounded-sm h-[90%]"></div><div class="w-1.5 bg-success rounded-sm h-[85%]"></div><div class="w-1.5 bg-success rounded-sm h-[60%]"></div><div class="w-1.5 bg-success rounded-sm h-[75%]"></div><div class="w-1.5 bg-success rounded-sm h-[95%]"></div>
+<div class="w-1.5 bg-success rounded-sm h-[100%]"></div><div class="w-1.5 bg-success rounded-sm h-[80%]"></div><div class="w-1.5 bg-success rounded-sm h-[85%]"></div><div class="w-1.5 bg-success rounded-sm h-[70%]"></div><div class="w-1.5 bg-success rounded-sm h-[90%]"></div>
+<div class="w-1.5 bg-success rounded-sm h-[95%]"></div><div class="w-1.5 bg-success rounded-sm h-[80%]"></div><div class="w-1.5 bg-success rounded-sm h-[60%]"></div><div class="w-1.5 bg-success rounded-sm h-[75%]"></div><div class="w-1.5 bg-success rounded-sm h-[100%]"></div>
+<div class="w-1.5 bg-success rounded-sm h-[90%]"></div><div class="w-1.5 bg-success rounded-sm h-[85%]"></div><div class="w-1.5 bg-success rounded-sm h-[95%]"></div><div class="w-1.5 bg-success rounded-sm h-[70%]"></div><div class="w-1.5 bg-success rounded-sm h-[80%]"></div>
+<div class="w-1.5 bg-success rounded-sm h-[60%]"></div><div class="w-1.5 bg-success rounded-sm h-[75%]"></div><div class="w-1.5 bg-success rounded-sm h-[100%]"></div><div class="w-1.5 bg-success rounded-sm h-[90%]"></div><div class="w-1.5 bg-success rounded-sm h-[85%]"></div>
+<div class="w-1.5 bg-success rounded-sm h-[95%]"></div><div class="w-1.5 bg-success rounded-sm h-[100%]"></div><div class="w-1.5 bg-success rounded-sm h-[80%]"></div><div class="w-1.5 bg-success rounded-sm h-[85%]"></div><div class="w-1.5 bg-success rounded-sm h-[100%]"></div>
+</div>
+<div class="flex justify-between mt-1 text-[10px] text-slate-400 font-mono uppercase">
+<span>30m ago</span>
+<span>Now</span>
+</div>
+</div>
+<!-- Metrics -->
+<div class="px-5 py-3 grid grid-cols-3 gap-2 border-b border-surface-border/50 dark:border-slate-700/50">
+<div>
+<p class="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1">Uptime</p>
+<p class="font-mono text-sm text-slate-900 dark:text-slate-100">4d 2h</p>
+</div>
+<div>
+<p class="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1">Last Req</p>
+<p class="font-mono text-sm text-slate-900 dark:text-slate-100">2ms ago</p>
+</div>
+<div>
+<p class="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1">Idle</p>
+<p class="font-mono text-sm text-slate-900 dark:text-slate-100">--</p>
+</div>
+</div>
+<!-- Footer & Actions -->
+<div class="p-4 bg-slate-50 dark:bg-slate-800/50 mt-auto rounded-b-lg flex items-center justify-between">
+<div class="text-[11px] text-slate-500 font-mono space-y-0.5">
+<p>img: nginx:alpine</p>
+<p>port: 80:8080</p>
+</div>
+<div class="flex gap-1">
+<button class="p-1.5 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:text-primary hover:border-primary transition-colors" title="View Logs">
+<span class="material-symbols-outlined !text-[18px]">terminal</span>
+</button>
+<button class="p-1.5 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:text-warning hover:border-warning transition-colors" title="Restart">
+<span class="material-symbols-outlined !text-[18px]">restart_alt</span>
+</button>
+</div>
+</div>
+</article>
+<!-- Card 2: Awakening (Media Server) -->
+<article class="group bg-surface dark:bg-slate-800 rounded-lg border border-primary/40 dark:border-primary/40 shadow-[0_0_15px_-3px_rgba(13,72,165,0.15)] transition-all duration-200 flex flex-col h-full relative overflow-hidden">
+<!-- Status Highlight Overlay -->
+<div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary/50 via-primary to-primary/50"></div>
+<!-- Header -->
+<div class="p-5 border-b border-surface-border/50 dark:border-slate-700/50 flex items-start justify-between">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center text-primary dark:text-blue-400">
+<span class="material-symbols-outlined animate-spin" style="animation-duration: 3s;">settings_motion_mode</span>
+</div>
+<div>
+<h3 class="font-mono font-bold text-lg text-slate-900 dark:text-white">media-server</h3>
+<span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-bold bg-primary/10 text-primary border border-primary/20">
+<span class="w-1.5 h-1.5 rounded-full bg-primary animate-ping"></span>
+                                AWAKENING
+                            </span>
+</div>
+</div>
+<button class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+<span class="material-symbols-outlined !text-[20px]">more_vert</span>
+</button>
+</div>
+<!-- Heartbeat Visualization -->
+<div class="px-5 pt-5 pb-2">
+<div class="flex items-end justify-between gap-[2px] h-8 w-full">
+<!-- Mostly gray, leading to blue -->
+<div class="w-1.5 bg-neutral-gray/20 rounded-sm h-[10%]"></div><div class="w-1.5 bg-neutral-gray/20 rounded-sm h-[10%]"></div><div class="w-1.5 bg-neutral-gray/20 rounded-sm h-[10%]"></div><div class="w-1.5 bg-neutral-gray/20 rounded-sm h-[10%]"></div><div class="w-1.5 bg-neutral-gray/20 rounded-sm h-[10%]"></div>
+<div class="w-1.5 bg-neutral-gray/20 rounded-sm h-[10%]"></div><div class="w-1.5 bg-neutral-gray/20 rounded-sm h-[10%]"></div><div class="w-1.5 bg-neutral-gray/20 rounded-sm h-[10%]"></div><div class="w-1.5 bg-neutral-gray/20 rounded-sm h-[10%]"></div><div class="w-1.5 bg-neutral-gray/20 rounded-sm h-[10%]"></div>
+<div class="w-1.5 bg-neutral-gray/20 rounded-sm h-[10%]"></div><div class="w-1.5 bg-neutral-gray/20 rounded-sm h-[10%]"></div><div class="w-1.5 bg-neutral-gray/20 rounded-sm h-[10%]"></div><div class="w-1.5 bg-neutral-gray/20 rounded-sm h-[10%]"></div><div class="w-1.5 bg-neutral-gray/20 rounded-sm h-[10%]"></div>
+<div class="w-1.5 bg-neutral-gray/20 rounded-sm h-[10%]"></div><div class="w-1.5 bg-neutral-gray/20 rounded-sm h-[10%]"></div><div class="w-1.5 bg-neutral-gray/20 rounded-sm h-[10%]"></div><div class="w-1.5 bg-neutral-gray/20 rounded-sm h-[10%]"></div><div class="w-1.5 bg-neutral-gray/20 rounded-sm h-[10%]"></div>
+<div class="w-1.5 bg-primary/20 rounded-sm h-[20%]"></div><div class="w-1.5 bg-primary/30 rounded-sm h-[25%]"></div><div class="w-1.5 bg-primary/40 rounded-sm h-[30%]"></div><div class="w-1.5 bg-primary/50 rounded-sm h-[35%]"></div><div class="w-1.5 bg-primary/60 rounded-sm h-[40%]"></div>
+<div class="w-1.5 bg-primary/70 rounded-sm h-[45%]"></div><div class="w-1.5 bg-primary/80 rounded-sm h-[50%]"></div><div class="w-1.5 bg-primary rounded-sm h-[60%] animate-pulse"></div><div class="w-1.5 bg-primary rounded-sm h-[65%] animate-pulse"></div><div class="w-1.5 bg-primary rounded-sm h-[70%] animate-pulse"></div>
+<div class="w-1.5 bg-primary rounded-sm h-[75%] animate-pulse"></div><div class="w-1.5 bg-primary rounded-sm h-[80%] animate-pulse"></div><div class="w-1.5 bg-primary rounded-sm h-[85%] animate-pulse"></div><div class="w-1.5 bg-primary rounded-sm h-[90%] animate-pulse"></div><div class="w-1.5 bg-primary rounded-sm h-[95%] animate-pulse"></div>
+</div>
+<div class="flex justify-between mt-1 text-[10px] text-slate-400 font-mono uppercase">
+<span>30m ago</span>
+<span>Now</span>
+</div>
+</div>
+<!-- Metrics -->
+<div class="px-5 py-3 grid grid-cols-3 gap-2 border-b border-surface-border/50 dark:border-slate-700/50">
+<div>
+<p class="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1">Uptime</p>
+<p class="font-mono text-sm text-slate-900 dark:text-slate-100">10s</p>
+</div>
+<div>
+<p class="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1">Last Req</p>
+<p class="font-mono text-sm text-slate-400 italic">Pending...</p>
+</div>
+<div>
+<p class="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1">Timeout</p>
+<p class="font-mono text-sm text-slate-900 dark:text-slate-100">60m</p>
+</div>
+</div>
+<!-- Footer & Actions -->
+<div class="p-4 bg-slate-50 dark:bg-slate-800/50 mt-auto rounded-b-lg flex items-center justify-between">
+<div class="text-[11px] text-slate-500 font-mono space-y-0.5">
+<p>img: jellyfin/jellyfin</p>
+<p>mem: 4096MB</p>
+</div>
+<div class="flex gap-1">
+<button class="p-1.5 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:text-primary hover:border-primary transition-colors">
+<span class="material-symbols-outlined !text-[18px]">terminal</span>
+</button>
+<button class="p-1.5 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:text-error hover:border-error transition-colors">
+<span class="material-symbols-outlined !text-[18px]">stop_circle</span>
+</button>
+</div>
+</div>
+</article>
+<!-- Card 3: Stopped (Dev Database) -->
+<article class="group bg-surface dark:bg-slate-800 rounded-lg border border-surface-border dark:border-slate-700 shadow-sm opacity-75 hover:opacity-100 hover:shadow-md transition-all duration-200 flex flex-col h-full">
+<!-- Header -->
+<div class="p-5 border-b border-surface-border/50 dark:border-slate-700/50 flex items-start justify-between">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-400">
+<span class="material-symbols-outlined">database</span>
+</div>
+<div>
+<h3 class="font-mono font-bold text-lg text-slate-700 dark:text-slate-300">dev-database</h3>
+<span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-bold bg-slate-100 text-slate-500 border border-slate-200 dark:bg-slate-700 dark:text-slate-400 dark:border-slate-600">
+<span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                                STOPPED
+                            </span>
+</div>
+</div>
+<button class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+<span class="material-symbols-outlined !text-[20px]">more_vert</span>
+</button>
+</div>
+<!-- Heartbeat Visualization -->
+<div class="px-5 pt-5 pb-2">
+<div class="flex items-end justify-between gap-[2px] h-8 w-full grayscale opacity-60">
+<!-- All gray bars -->
+<div class="w-1.5 bg-neutral-gray rounded-sm h-[30%]"></div><div class="w-1.5 bg-neutral-gray rounded-sm h-[30%]"></div><div class="w-1.5 bg-neutral-gray rounded-sm h-[30%]"></div><div class="w-1.5 bg-neutral-gray rounded-sm h-[30%]"></div><div class="w-1.5 bg-neutral-gray rounded-sm h-[20%]"></div>
+<div class="w-1.5 bg-neutral-gray rounded-sm h-[20%]"></div><div class="w-1.5 bg-neutral-gray rounded-sm h-[20%]"></div><div class="w-1.5 bg-neutral-gray rounded-sm h-[20%]"></div><div class="w-1.5 bg-neutral-gray rounded-sm h-[20%]"></div><div class="w-1.5 bg-neutral-gray rounded-sm h-[20%]"></div>
+<div class="w-1.5 bg-neutral-gray rounded-sm h-[20%]"></div><div class="w-1.5 bg-neutral-gray rounded-sm h-[20%]"></div><div class="w-1.5 bg-neutral-gray/50 rounded-sm h-[10%]"></div><div class="w-1.5 bg-neutral-gray/50 rounded-sm h-[10%]"></div><div class="w-1.5 bg-neutral-gray/50 rounded-sm h-[10%]"></div>
+<div class="w-1.5 bg-neutral-gray/50 rounded-sm h-[10%]"></div><div class="w-1.5 bg-neutral-gray/50 rounded-sm h-[10%]"></div><div class="w-1.5 bg-neutral-gray/50 rounded-sm h-[10%]"></div><div class="w-1.5 bg-neutral-gray/50 rounded-sm h-[10%]"></div><div class="w-1.5 bg-neutral-gray/50 rounded-sm h-[10%]"></div>
+<div class="w-1.5 bg-neutral-gray/20 rounded-sm h-[5%]"></div><div class="w-1.5 bg-neutral-gray/20 rounded-sm h-[5%]"></div><div class="w-1.5 bg-neutral-gray/20 rounded-sm h-[5%]"></div><div class="w-1.5 bg-neutral-gray/20 rounded-sm h-[5%]"></div><div class="w-1.5 bg-neutral-gray/20 rounded-sm h-[5%]"></div>
+<div class="w-1.5 bg-neutral-gray/20 rounded-sm h-[5%]"></div><div class="w-1.5 bg-neutral-gray/20 rounded-sm h-[5%]"></div><div class="w-1.5 bg-neutral-gray/20 rounded-sm h-[5%]"></div><div class="w-1.5 bg-neutral-gray/20 rounded-sm h-[5%]"></div><div class="w-1.5 bg-neutral-gray/20 rounded-sm h-[5%]"></div>
+<div class="w-1.5 bg-neutral-gray/20 rounded-sm h-[5%]"></div><div class="w-1.5 bg-neutral-gray/20 rounded-sm h-[5%]"></div><div class="w-1.5 bg-neutral-gray/20 rounded-sm h-[5%]"></div><div class="w-1.5 bg-neutral-gray/20 rounded-sm h-[5%]"></div><div class="w-1.5 bg-neutral-gray/20 rounded-sm h-[5%]"></div>
+</div>
+<div class="flex justify-between mt-1 text-[10px] text-slate-400 font-mono uppercase">
+<span>30m ago</span>
+<span>Now</span>
+</div>
+</div>
+<!-- Metrics -->
+<div class="px-5 py-3 grid grid-cols-3 gap-2 border-b border-surface-border/50 dark:border-slate-700/50">
+<div>
+<p class="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1">Uptime</p>
+<p class="font-mono text-sm text-slate-400">--</p>
+</div>
+<div>
+<p class="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1">Last Req</p>
+<p class="font-mono text-sm text-slate-600 dark:text-slate-300">4d ago</p>
+</div>
+<div>
+<p class="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1">Exit Code</p>
+<p class="font-mono text-sm text-slate-900 dark:text-slate-100">0</p>
+</div>
+</div>
+<!-- Footer & Actions -->
+<div class="p-4 bg-slate-50 dark:bg-slate-800/50 mt-auto rounded-b-lg flex items-center justify-between">
+<div class="text-[11px] text-slate-500 font-mono space-y-0.5">
+<p>img: postgres:14</p>
+<p>vol: pg_data_dev</p>
+</div>
+<div class="flex gap-1">
+<button class="p-1.5 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:text-primary hover:border-primary transition-colors">
+<span class="material-symbols-outlined !text-[18px]">terminal</span>
+</button>
+<button class="p-1.5 rounded bg-primary border border-primary text-white hover:bg-blue-700 transition-colors" title="Start Container">
+<span class="material-symbols-outlined !text-[18px]">play_arrow</span>
+</button>
+</div>
+</div>
+</article>
+<!-- Card 4: Error (Home Assistant) -->
+<article class="group bg-surface dark:bg-slate-800 rounded-lg border border-surface-border dark:border-slate-700 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col h-full">
+<!-- Header -->
+<div class="p-5 border-b border-surface-border/50 dark:border-slate-700/50 flex items-start justify-between">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded bg-red-50 dark:bg-red-900/20 flex items-center justify-center text-error">
+<span class="material-symbols-outlined">home_iot_device</span>
+</div>
+<div>
+<h3 class="font-mono font-bold text-lg text-slate-900 dark:text-white">home-assistant</h3>
+<span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-bold bg-error/10 text-error border border-error/20">
+<span class="w-1.5 h-1.5 rounded-full bg-error animate-pulse"></span>
+                                ERROR
+                            </span>
+</div>
+</div>
+<button class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+<span class="material-symbols-outlined !text-[20px]">more_vert</span>
+</button>
+</div>
+<!-- Heartbeat Visualization -->
+<div class="px-5 pt-5 pb-2">
+<div class="flex items-end justify-between gap-[2px] h-8 w-full">
+<!-- Green turning to red -->
+<div class="w-1.5 bg-success rounded-sm h-[80%]"></div><div class="w-1.5 bg-success rounded-sm h-[80%]"></div><div class="w-1.5 bg-success rounded-sm h-[80%]"></div><div class="w-1.5 bg-success rounded-sm h-[80%]"></div><div class="w-1.5 bg-success rounded-sm h-[80%]"></div>
+<div class="w-1.5 bg-success rounded-sm h-[80%]"></div><div class="w-1.5 bg-success rounded-sm h-[80%]"></div><div class="w-1.5 bg-success rounded-sm h-[80%]"></div><div class="w-1.5 bg-success rounded-sm h-[80%]"></div><div class="w-1.5 bg-success rounded-sm h-[80%]"></div>
+<div class="w-1.5 bg-success rounded-sm h-[80%]"></div><div class="w-1.5 bg-success rounded-sm h-[80%]"></div><div class="w-1.5 bg-success rounded-sm h-[80%]"></div><div class="w-1.5 bg-success rounded-sm h-[80%]"></div><div class="w-1.5 bg-success rounded-sm h-[80%]"></div>
+<div class="w-1.5 bg-warning rounded-sm h-[90%]"></div><div class="w-1.5 bg-warning rounded-sm h-[90%]"></div><div class="w-1.5 bg-warning rounded-sm h-[90%]"></div><div class="w-1.5 bg-warning rounded-sm h-[85%]"></div><div class="w-1.5 bg-warning rounded-sm h-[80%]"></div>
+<div class="w-1.5 bg-error rounded-sm h-[40%]"></div><div class="w-1.5 bg-error rounded-sm h-[40%]"></div><div class="w-1.5 bg-error rounded-sm h-[40%]"></div><div class="w-1.5 bg-error rounded-sm h-[40%]"></div><div class="w-1.5 bg-error rounded-sm h-[40%]"></div>
+<div class="w-1.5 bg-error rounded-sm h-[40%]"></div><div class="w-1.5 bg-error rounded-sm h-[40%]"></div><div class="w-1.5 bg-error rounded-sm h-[40%]"></div><div class="w-1.5 bg-error rounded-sm h-[40%]"></div><div class="w-1.5 bg-error rounded-sm h-[40%]"></div>
+<div class="w-1.5 bg-error rounded-sm h-[40%]"></div><div class="w-1.5 bg-error rounded-sm h-[40%]"></div><div class="w-1.5 bg-error rounded-sm h-[40%]"></div><div class="w-1.5 bg-error rounded-sm h-[40%]"></div><div class="w-1.5 bg-error rounded-sm h-[40%]"></div>
+</div>
+<div class="flex justify-between mt-1 text-[10px] text-slate-400 font-mono uppercase">
+<span>30m ago</span>
+<span>Now</span>
+</div>
+</div>
+<!-- Metrics -->
+<div class="px-5 py-3 grid grid-cols-3 gap-2 border-b border-surface-border/50 dark:border-slate-700/50">
+<div>
+<p class="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1">Uptime</p>
+<p class="font-mono text-sm text-slate-900 dark:text-slate-100">2m</p>
+</div>
+<div>
+<p class="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1">Restarts</p>
+<p class="font-mono text-sm text-error font-bold">4 (Loop)</p>
+</div>
+<div>
+<p class="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1">Exit Code</p>
+<p class="font-mono text-sm text-error font-bold">1</p>
+</div>
+</div>
+<!-- Footer & Actions -->
+<div class="p-4 bg-slate-50 dark:bg-slate-800/50 mt-auto rounded-b-lg flex items-center justify-between">
+<div class="text-[11px] text-slate-500 font-mono space-y-0.5">
+<p>img: homeassistant/home-assistant:stable</p>
+<p>net: host</p>
+</div>
+<div class="flex gap-1">
+<button class="p-1.5 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:text-primary hover:border-primary transition-colors">
+<span class="material-symbols-outlined !text-[18px]">terminal</span>
+</button>
+<button class="p-1.5 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:text-warning hover:border-warning transition-colors" title="Force Restart">
+<span class="material-symbols-outlined !text-[18px]">restart_alt</span>
+</button>
+</div>
+</div>
+</article>
+<!-- Card 5: Active (AdGuard) -->
+<article class="group bg-surface dark:bg-slate-800 rounded-lg border border-surface-border dark:border-slate-700 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col h-full">
+<!-- Header -->
+<div class="p-5 border-b border-surface-border/50 dark:border-slate-700/50 flex items-start justify-between">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300">
+<span class="material-symbols-outlined">security</span>
+</div>
+<div>
+<h3 class="font-mono font-bold text-lg text-slate-900 dark:text-white group-hover:text-primary transition-colors">adguard-home</h3>
+<span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-bold bg-success/10 text-success border border-success/20">
+<span class="w-1.5 h-1.5 rounded-full bg-success"></span>
+                                RUNNING
+                            </span>
+</div>
+</div>
+<button class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+<span class="material-symbols-outlined !text-[20px]">more_vert</span>
+</button>
+</div>
+<!-- Heartbeat Visualization -->
+<div class="px-5 pt-5 pb-2">
+<div class="flex items-end justify-between gap-[2px] h-8 w-full">
+<div class="w-1.5 bg-success rounded-sm h-[40%]"></div><div class="w-1.5 bg-success rounded-sm h-[50%]"></div><div class="w-1.5 bg-success rounded-sm h-[60%]"></div><div class="w-1.5 bg-success rounded-sm h-[80%]"></div><div class="w-1.5 bg-success rounded-sm h-[70%]"></div>
+<div class="w-1.5 bg-success rounded-sm h-[40%]"></div><div class="w-1.5 bg-success rounded-sm h-[50%]"></div><div class="w-1.5 bg-success rounded-sm h-[60%]"></div><div class="w-1.5 bg-success rounded-sm h-[80%]"></div><div class="w-1.5 bg-success rounded-sm h-[70%]"></div>
+<div class="w-1.5 bg-success rounded-sm h-[40%]"></div><div class="w-1.5 bg-success rounded-sm h-[50%]"></div><div class="w-1.5 bg-success rounded-sm h-[60%]"></div><div class="w-1.5 bg-success rounded-sm h-[80%]"></div><div class="w-1.5 bg-success rounded-sm h-[70%]"></div>
+<div class="w-1.5 bg-success rounded-sm h-[40%]"></div><div class="w-1.5 bg-success rounded-sm h-[50%]"></div><div class="w-1.5 bg-success rounded-sm h-[60%]"></div><div class="w-1.5 bg-success rounded-sm h-[80%]"></div><div class="w-1.5 bg-success rounded-sm h-[70%]"></div>
+<div class="w-1.5 bg-success rounded-sm h-[40%]"></div><div class="w-1.5 bg-success rounded-sm h-[50%]"></div><div class="w-1.5 bg-success rounded-sm h-[60%]"></div><div class="w-1.5 bg-success rounded-sm h-[80%]"></div><div class="w-1.5 bg-success rounded-sm h-[70%]"></div>
+<div class="w-1.5 bg-success rounded-sm h-[40%]"></div><div class="w-1.5 bg-success rounded-sm h-[50%]"></div><div class="w-1.5 bg-success rounded-sm h-[60%]"></div><div class="w-1.5 bg-success rounded-sm h-[80%]"></div><div class="w-1.5 bg-success rounded-sm h-[70%]"></div>
+<div class="w-1.5 bg-success rounded-sm h-[40%]"></div><div class="w-1.5 bg-success rounded-sm h-[50%]"></div><div class="w-1.5 bg-success rounded-sm h-[60%]"></div><div class="w-1.5 bg-success rounded-sm h-[80%]"></div><div class="w-1.5 bg-success rounded-sm h-[70%]"></div>
+</div>
+<div class="flex justify-between mt-1 text-[10px] text-slate-400 font-mono uppercase">
+<span>30m ago</span>
+<span>Now</span>
+</div>
+</div>
+<!-- Metrics -->
+<div class="px-5 py-3 grid grid-cols-3 gap-2 border-b border-surface-border/50 dark:border-slate-700/50">
+<div>
+<p class="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1">Uptime</p>
+<p class="font-mono text-sm text-slate-900 dark:text-slate-100">12d 5h</p>
+</div>
+<div>
+<p class="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1">Last Req</p>
+<p class="font-mono text-sm text-slate-900 dark:text-slate-100">45s ago</p>
+</div>
+<div>
+<p class="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1">Blocked</p>
+<p class="font-mono text-sm text-slate-900 dark:text-slate-100">14.2k</p>
+</div>
+</div>
+<!-- Footer & Actions -->
+<div class="p-4 bg-slate-50 dark:bg-slate-800/50 mt-auto rounded-b-lg flex items-center justify-between">
+<div class="text-[11px] text-slate-500 font-mono space-y-0.5">
+<p>img: adguard/adguardhome</p>
+<p>port: 53:53</p>
+</div>
+<div class="flex gap-1">
+<button class="p-1.5 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:text-primary hover:border-primary transition-colors">
+<span class="material-symbols-outlined !text-[18px]">terminal</span>
+</button>
+<button class="p-1.5 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:text-warning hover:border-warning transition-colors">
+<span class="material-symbols-outlined !text-[18px]">restart_alt</span>
+</button>
+</div>
+</div>
+</article>
+<!-- Card 6: Active (Mosquitto) -->
+<article class="group bg-surface dark:bg-slate-800 rounded-lg border border-surface-border dark:border-slate-700 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col h-full">
+<!-- Header -->
+<div class="p-5 border-b border-surface-border/50 dark:border-slate-700/50 flex items-start justify-between">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300">
+<span class="material-symbols-outlined">hub</span>
+</div>
+<div>
+<h3 class="font-mono font-bold text-lg text-slate-900 dark:text-white group-hover:text-primary transition-colors">mqtt-broker</h3>
+<span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-bold bg-success/10 text-success border border-success/20">
+<span class="w-1.5 h-1.5 rounded-full bg-success"></span>
+                                RUNNING
+                            </span>
+</div>
+</div>
+<button class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+<span class="material-symbols-outlined !text-[20px]">more_vert</span>
+</button>
+</div>
+<!-- Heartbeat Visualization -->
+<div class="px-5 pt-5 pb-2">
+<div class="flex items-end justify-between gap-[2px] h-8 w-full">
+<!-- Stable low activity -->
+<div class="w-1.5 bg-success rounded-sm h-[20%]"></div><div class="w-1.5 bg-success rounded-sm h-[20%]"></div><div class="w-1.5 bg-success rounded-sm h-[20%]"></div><div class="w-1.5 bg-success rounded-sm h-[20%]"></div><div class="w-1.5 bg-success rounded-sm h-[20%]"></div>
+<div class="w-1.5 bg-success rounded-sm h-[20%]"></div><div class="w-1.5 bg-success rounded-sm h-[20%]"></div><div class="w-1.5 bg-success rounded-sm h-[20%]"></div><div class="w-1.5 bg-success rounded-sm h-[20%]"></div><div class="w-1.5 bg-success rounded-sm h-[20%]"></div>
+<div class="w-1.5 bg-success rounded-sm h-[20%]"></div><div class="w-1.5 bg-success rounded-sm h-[20%]"></div><div class="w-1.5 bg-success rounded-sm h-[20%]"></div><div class="w-1.5 bg-success rounded-sm h-[20%]"></div><div class="w-1.5 bg-success rounded-sm h-[20%]"></div>
+<div class="w-1.5 bg-success rounded-sm h-[20%]"></div><div class="w-1.5 bg-success rounded-sm h-[20%]"></div><div class="w-1.5 bg-success rounded-sm h-[20%]"></div><div class="w-1.5 bg-success rounded-sm h-[20%]"></div><div class="w-1.5 bg-success rounded-sm h-[20%]"></div>
+<div class="w-1.5 bg-success rounded-sm h-[20%]"></div><div class="w-1.5 bg-success rounded-sm h-[20%]"></div><div class="w-1.5 bg-success rounded-sm h-[20%]"></div><div class="w-1.5 bg-success rounded-sm h-[20%]"></div><div class="w-1.5 bg-success rounded-sm h-[20%]"></div>
+<div class="w-1.5 bg-success rounded-sm h-[80%]"></div><div class="w-1.5 bg-success rounded-sm h-[20%]"></div><div class="w-1.5 bg-success rounded-sm h-[20%]"></div><div class="w-1.5 bg-success rounded-sm h-[20%]"></div><div class="w-1.5 bg-success rounded-sm h-[20%]"></div>
+<div class="w-1.5 bg-success rounded-sm h-[20%]"></div><div class="w-1.5 bg-success rounded-sm h-[20%]"></div><div class="w-1.5 bg-success rounded-sm h-[20%]"></div><div class="w-1.5 bg-success rounded-sm h-[20%]"></div><div class="w-1.5 bg-success rounded-sm h-[20%]"></div>
+</div>
+<div class="flex justify-between mt-1 text-[10px] text-slate-400 font-mono uppercase">
+<span>30m ago</span>
+<span>Now</span>
+</div>
+</div>
+<!-- Metrics -->
+<div class="px-5 py-3 grid grid-cols-3 gap-2 border-b border-surface-border/50 dark:border-slate-700/50">
+<div>
+<p class="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1">Uptime</p>
+<p class="font-mono text-sm text-slate-900 dark:text-slate-100">32d</p>
+</div>
+<div>
+<p class="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1">Msgs</p>
+<p class="font-mono text-sm text-slate-900 dark:text-slate-100">45/s</p>
+</div>
+<div>
+<p class="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1">Clients</p>
+<p class="font-mono text-sm text-slate-900 dark:text-slate-100">12</p>
+</div>
+</div>
+<!-- Footer & Actions -->
+<div class="p-4 bg-slate-50 dark:bg-slate-800/50 mt-auto rounded-b-lg flex items-center justify-between">
+<div class="text-[11px] text-slate-500 font-mono space-y-0.5">
+<p>img: eclipse-mosquitto</p>
+<p>port: 1883:1883</p>
+</div>
+<div class="flex gap-1">
+<button class="p-1.5 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:text-primary hover:border-primary transition-colors">
+<span class="material-symbols-outlined !text-[18px]">terminal</span>
+</button>
+<button class="p-1.5 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:text-warning hover:border-warning transition-colors">
+<span class="material-symbols-outlined !text-[18px]">restart_alt</span>
+</button>
+</div>
+</div>
+</article>
+</div>
+</main>
+<footer class="mt-auto border-t border-surface-border dark:border-slate-700 py-6 bg-surface dark:bg-slate-900">
+<div class="max-w-[1400px] mx-auto px-4 text-center">
+<p class="text-xs text-slate-400 font-mono">Docker Awakening Gateway v2.4.0 • System Load: 0.45 • RAM: 64%</p>
+</div>
+</footer>
+</body></html>

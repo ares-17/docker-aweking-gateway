@@ -86,6 +86,15 @@ func (m *ContainerManager) RecordActivity(containerName string) {
 	m.mu.Unlock()
 }
 
+// GetLastSeen returns the last activity timestamp for a container.
+// Used by the /_status endpoint to show "Last Request" time.
+func (m *ContainerManager) GetLastSeen(containerName string) (time.Time, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	t, ok := m.lastSeen[containerName]
+	return t, ok
+}
+
 // EnsureRunning checks whether a container is running and, if not, starts it.
 // Flow: docker start → wait for "running" state → TCP probe → mark ready.
 // Uses cfg.StartTimeout as the total budget for the entire sequence.

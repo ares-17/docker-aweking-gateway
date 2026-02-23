@@ -16,6 +16,8 @@ import (
 	"time"
 )
 
+const gatewayVersion = "0.3.0"
+
 //go:embed templates/*.html
 var templatesFS embed.FS
 
@@ -47,6 +49,9 @@ func (s *Server) Start() error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/_health", s.handleHealth)
 	mux.HandleFunc("/_logs", s.handleLogs)
+	mux.HandleFunc("/_status", s.handleStatusPage)
+	mux.HandleFunc("/_status/api", s.handleStatusAPI)
+	mux.HandleFunc("/_status/wake", s.handleStatusWake)
 	mux.HandleFunc("/", s.handleRequest)
 
 	srv := &http.Server{
@@ -56,7 +61,7 @@ func (s *Server) Start() error {
 		WriteTimeout: 30 * time.Second,
 	}
 
-	fmt.Printf("Docker Awakening Gateway listening on :%s\n", s.cfg.Gateway.Port)
+	fmt.Printf("Docker Awakening Gateway v%s listening on :%s\n", gatewayVersion, s.cfg.Gateway.Port)
 	return srv.ListenAndServe()
 }
 
@@ -88,7 +93,7 @@ func (s *Server) resolveConfig(r *http.Request) *ContainerConfig {
 // ─── Main handler ─────────────────────────────────────────────────────────────
 
 func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path == "/_health" || r.URL.Path == "/_logs" {
+	if r.URL.Path == "/_health" || r.URL.Path == "/_logs" || strings.HasPrefix(r.URL.Path, "/_status") {
 		http.NotFound(w, r)
 		return
 	}
@@ -340,6 +345,29 @@ type errorData struct {
 	RequestPath   string
 }
 
+type statusPageData struct {
+	Version string
+}
+
+type statusContainerJSON struct {
+	Name         string  `json:"name"`
+	Host         string  `json:"host"`
+	Status       string  `json:"status"`
+	StartState   string  `json:"start_state"`
+	Image        string  `json:"image"`
+	TargetPort   string  `json:"target_port"`
+	StartTimeout string  `json:"start_timeout"`
+	IdleTimeout  string  `json:"idle_timeout"`
+	StartedAt    *string `json:"started_at,omitempty"`
+	LastRequest  *string `json:"last_request,omitempty"`
+	Network      string  `json:"network"`
+}
+
+type statusAPIResponse struct {
+	Containers []statusContainerJSON `json:"containers"`
+	UpdatedAt  string                `json:"updated_at"`
+}
+
 func requestID(prefix string) string {
 	return fmt.Sprintf("%s-%x", prefix, time.Now().UnixNano()%0xFFFFFF)
 }
@@ -370,4 +398,118 @@ func (s *Server) serveErrorPage(w http.ResponseWriter, r *http.Request, cfg *Con
 	if err := s.tmpl.ExecuteTemplate(w, "error.html", data); err != nil {
 		fmt.Printf("template error (error): %v\n", err)
 	}
+}
+
+// ─── Status dashboard handlers ────────────────────────────────────────────────
+
+// handleStatusPage serves the status dashboard HTML page.
+func (s *Server) handleStatusPage(w http.ResponseWriter, r *http.Request) {
+	data := statusPageData{
+		Version: gatewayVersion,
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := s.tmpl.ExecuteTemplate(w, "status.html", data); err != nil {
+		fmt.Printf("template error (status): %v\n", err)
+		http.Error(w, "Failed to render status page", http.StatusInternalServerError)
+	}
+}
+
+// handleStatusAPI returns a JSON snapshot of all managed containers.
+// Polled every ~5s by the status dashboard JS.
+func (s *Server) handleStatusAPI(w http.ResponseWriter, r *http.Request) {
+	if !s.rateLimiter.Allow(clientIP(r)) {
+		http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
+		return
+	}
+
+	ctx := r.Context()
+	result := statusAPIResponse{
+		UpdatedAt:  time.Now().UTC().Format(time.RFC3339),
+		Containers: make([]statusContainerJSON, 0, len(s.cfg.Containers)),
+	}
+
+	for i := range s.cfg.Containers {
+		cfg := &s.cfg.Containers[i]
+		entry := statusContainerJSON{
+			Name:         cfg.Name,
+			Host:         cfg.Host,
+			TargetPort:   cfg.TargetPort,
+			StartTimeout: cfg.StartTimeout.String(),
+			IdleTimeout:  cfg.IdleTimeout.String(),
+			Network:      cfg.Network,
+		}
+
+		// Gateway-level start state
+		startState, _ := s.manager.GetStartState(cfg.Name)
+		entry.StartState = startState
+
+		// Docker inspect for live status + image + timestamps
+		info, err := s.manager.client.InspectContainer(ctx, cfg.Name)
+		if err != nil {
+			entry.Status = "unknown"
+			entry.Image = "?"
+		} else {
+			entry.Status = info.Status
+			entry.Image = info.Image
+			if !info.StartedAt.IsZero() {
+				ts := info.StartedAt.UTC().Format(time.RFC3339)
+				entry.StartedAt = &ts
+			}
+		}
+
+		// Last request from in-memory activity tracker
+		if t, ok := s.manager.GetLastSeen(cfg.Name); ok {
+			ts := t.UTC().Format(time.RFC3339)
+			entry.LastRequest = &ts
+		}
+
+		result.Containers = append(result.Containers, entry)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+// handleStatusWake triggers a container start from the dashboard.
+func (s *Server) handleStatusWake(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !s.rateLimiter.Allow(clientIP(r)) {
+		http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
+		return
+	}
+
+	name := r.URL.Query().Get("container")
+	if name == "" {
+		http.Error(w, "missing container parameter", http.StatusBadRequest)
+		return
+	}
+
+	// Find matching container config
+	var cfg *ContainerConfig
+	for i := range s.cfg.Containers {
+		if s.cfg.Containers[i].Name == name {
+			cfg = &s.cfg.Containers[i]
+			break
+		}
+	}
+	if cfg == nil {
+		http.Error(w, "unknown container", http.StatusBadRequest)
+		return
+	}
+
+	// Trigger async start
+	s.manager.InitStartState(cfg.Name)
+	go func() {
+		bgCtx, cancel := context.WithTimeout(context.Background(), cfg.StartTimeout+10*time.Second)
+		defer cancel()
+		if err := s.manager.EnsureRunning(bgCtx, cfg); err != nil {
+			fmt.Printf("status-wake: start error for %q: %v\n", cfg.Name, err)
+		}
+	}()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }

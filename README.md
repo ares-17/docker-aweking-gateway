@@ -127,6 +127,9 @@ services:
 |---|---|
 | `/_health?container=NAME` | Returns `{"status":"running"}` — polled by the loading page |
 | `/_logs?container=NAME` | Returns `{"lines":["..."]}` — polled every 3s by the log box |
+| `/_status` | Admin dashboard showing all managed containers with live status |
+| `/_status/api` | JSON snapshot of all containers — polled every 5s by the dashboard |
+| `/_status/wake?container=NAME` | POST — triggers container start from the dashboard |
 
 ## Test Scenarios (docker compose)
 
@@ -168,7 +171,8 @@ docker-gateway/
 │   ├── server.go              # HTTP server: routing, /_health, /_logs, proxy
 │   └── templates/
 │       ├── loading.html       # Awakening page: log box + progress + auto-redirect
-│       └── error.html         # Failure state page
+│       ├── error.html         # Failure state page
+│       └── status.html        # Admin status dashboard
 ├── Dockerfile                 # Multi-stage: golang:1.24 → distroless/static
 └── docker-compose.yml         # Dev/test environment
 ```

@@ -28,6 +28,14 @@ func NewDockerClient() (*DockerClient, error) {
 	return &DockerClient{cli: cli}, nil
 }
 
+// ContainerInfo holds lightweight container details for the status dashboard.
+type ContainerInfo struct {
+	Status     string
+	Image      string
+	StartedAt  time.Time
+	FinishedAt time.Time
+}
+
 // GetContainerStatus returns the status of a container (e.g. "running", "exited")
 func (d *DockerClient) GetContainerStatus(ctx context.Context, containerName string) (string, error) {
 	info, err := d.cli.ContainerInspect(ctx, containerName)
@@ -35,6 +43,25 @@ func (d *DockerClient) GetContainerStatus(ctx context.Context, containerName str
 		return "", err
 	}
 	return info.State.Status, nil
+}
+
+// InspectContainer returns lightweight container details for the status dashboard.
+func (d *DockerClient) InspectContainer(ctx context.Context, containerName string) (*ContainerInfo, error) {
+	info, err := d.cli.ContainerInspect(ctx, containerName)
+	if err != nil {
+		return nil, err
+	}
+	ci := &ContainerInfo{
+		Status: info.State.Status,
+		Image:  info.Config.Image,
+	}
+	if t, err := time.Parse(time.RFC3339Nano, info.State.StartedAt); err == nil {
+		ci.StartedAt = t
+	}
+	if t, err := time.Parse(time.RFC3339Nano, info.State.FinishedAt); err == nil {
+		ci.FinishedAt = t
+	}
+	return ci, nil
 }
 
 // GetContainerAddress returns the IP address of the container.

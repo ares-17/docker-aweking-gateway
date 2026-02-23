@@ -53,13 +53,17 @@
 - [x] **`docker-compose.yml`** — gateway + `slow-app` (15s boot) + `fail-app` (always crashes) for testing
 - [x] **`ROADMAP.md`** — this file
 
+### Admin
+- [x] **`/_status` dashboard page** — HTML admin dashboard showing all managed containers with live status, heartbeat bars, uptime, last request, idle timeout, and dark/light mode toggle
+- [x] **`/_status/api` JSON endpoint** — returns a snapshot of all containers (status, image, timestamps, config) polled every 5s by the dashboard
+- [x] **`/_status/wake` action** — POST endpoint to trigger container start from the dashboard UI
+
 ---
 
 ## 🚧 In Progress / Near-term
 
 - [ ] **Config validation at startup** — fail fast with clear messages if required fields are missing
 - [ ] **Config hot-reload** — reload `config.yaml` on SIGHUP without restarting the gateway
-- [ ] **`/_status` admin endpoint** — JSON overview of all managed containers and their current state
 
 ## 📅 Medium-term
 

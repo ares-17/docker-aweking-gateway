@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>Docker Awakening Gateway — Status Dashboard</title>
+    <link href="https://fonts.googleapis.com" rel="preconnect" />
+    <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#2b75ee",
+                        "bg-dark": "#0d1117",
+                        "bg-light": "#f8fafc",
+                        "card-dark": "#161b22",
+                        "card-light": "#ffffff",
+                        "border-dark": "#30363d",
+                        "border-light": "#e2e8f0",
+                        "status-running": "#238636",
+                        "status-error": "#da3633",
+                        "status-stopped": "#8b949e",
+                        "status-starting": "#d29922",
+                        "status-awakening": "#2b75ee",
+                    },
+                    fontFamily: {
+                        "display": ["Space Grotesk", "sans-serif"],
+                        "mono": ["JetBrains Mono", "monospace"],
+                    },
+                },
+            },
+        }
+    </script>
+    <style>
+        @keyframes pulse-dot {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.4;
+            }
+        }
+
+        .animate-pulse-dot {
+            animation: pulse-dot 1.5s ease-in-out infinite;
+        }
+
+        @keyframes bar-enter {
+            from {
+                transform: scaleY(0);
+            }
+
+            to {
+                transform: scaleY(1);
+            }
+        }
+
+        .bar-animate {
+            animation: bar-enter 0.3s ease-out forwards;
+            transform-origin: bottom;
+        }
+
+        @keyframes spin-icon {
+            from {
+                transform: rotate(0deg);
+            }
+
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .animate-spin-slow {
+            animation: spin-icon 1.5s linear infinite;
+        }
+
+        /* Dark mode scrollbar */
+        .dark ::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .dark ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .dark ::-webkit-scrollbar-thumb {
+            background: #30363d;
+            border-radius: 2px;
+        }
+    </style>
+</head>
+
+<body
+    class="dark:bg-bg-dark bg-bg-light dark:text-slate-300 text-slate-700 font-display min-h-screen flex flex-col transition-colors duration-200">
+
+    <!-- ─── Header ──────────────────────────────────────────────────────── -->
+    <header
+        class="border-b dark:border-border-dark border-border-light dark:bg-card-dark bg-card-light px-4 sm:px-6 py-4 sticky top-0 z-50 transition-colors duration-200">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+
+            <!-- Logo + title -->
+            <div class="flex items-center gap-3">
+                <div class="bg-primary/20 p-2 rounded-lg text-primary">
+                    <span class="material-symbols-outlined text-2xl">deployed_code</span>
+                </div>
+                <div>
+                    <h1 class="dark:text-white text-slate-900 text-xl font-bold tracking-tight">Docker Awakening Gateway
+                    </h1>
+                    <p class="text-xs dark:text-slate-500 text-slate-400 font-mono">v{{ .Version }} • /_status</p>
+                </div>
+            </div>
+
+            <!-- Summary badges -->
+            <div id="summary-badges"
+                class="flex items-center gap-2 dark:bg-bg-dark/50 bg-slate-100 p-1.5 rounded-lg dark:border-border-dark border-border-light border overflow-x-auto max-w-full">
+                <div
+                    class="flex items-center gap-2 px-3 py-1 rounded dark:bg-card-dark bg-white dark:border-border-dark border-border-light border min-w-fit">
+                    <span class="w-2 h-2 rounded-full bg-slate-400"></span>
+                    <span id="badge-total" class="text-xs font-bold dark:text-white text-slate-800 font-mono">0
+                        Total</span>
+                </div>
+                <div
+                    class="flex items-center gap-2 px-3 py-1 rounded dark:bg-card-dark bg-white dark:border-border-dark border-border-light border min-w-fit">
+                    <span class="w-2 h-2 rounded-full bg-status-running"></span>
+                    <span id="badge-running" class="text-xs font-bold text-status-running font-mono">0 Running</span>
+                </div>
+                <div
+                    class="flex items-center gap-2 px-3 py-1 rounded dark:bg-card-dark bg-white dark:border-border-dark border-border-light border min-w-fit">
+                    <span class="w-2 h-2 rounded-full bg-status-stopped"></span>
+                    <span id="badge-stopped" class="text-xs font-bold text-status-stopped font-mono">0 Stopped</span>
+                </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="flex items-center gap-3">
+                <div class="hidden lg:flex flex-col items-end text-xs dark:text-slate-500 text-slate-400 font-mono">
+                    <span>Last Updated</span>
+                    <span id="last-updated" class="dark:text-slate-300 text-slate-600">--:--:--</span>
+                </div>
+                <button id="btn-refresh" onclick="fetchStatus()"
+                    class="p-2 rounded-lg dark:hover:bg-border-dark hover:bg-slate-200 dark:text-slate-400 text-slate-500 hover:text-primary transition-colors"
+                    title="Refresh now">
+                    <span class="material-symbols-outlined">refresh</span>
+                </button>
+                <div class="h-6 w-px dark:bg-border-dark bg-border-light"></div>
+                <button id="btn-theme" onclick="toggleTheme()"
+                    class="p-2 rounded-lg dark:bg-border-dark bg-slate-200 dark:text-white text-slate-700 transition-colors"
+                    title="Toggle dark/light mode">
+                    <span id="theme-icon" class="material-symbols-outlined text-sm">dark_mode</span>
+                </button>
+            </div>
+
+        </div>
+    </header>
+
+    <!-- ─── Main content ────────────────────────────────────────────────── -->
+    <main class="flex-grow p-4 sm:p-6">
+        <div class="max-w-7xl mx-auto">
+            <div id="container-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                <!-- Cards rendered by JS -->
+            </div>
+            <!-- Empty state -->
+            <div id="empty-state" class="hidden text-center py-20">
+                <span
+                    class="material-symbols-outlined text-5xl dark:text-slate-600 text-slate-300 mb-4 block">deployed_code_alert</span>
+                <p class="font-mono text-sm dark:text-slate-500 text-slate-400">No container data available. Waiting for
+                    first update…</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- ─── Footer ──────────────────────────────────────────────────────── -->
+    <footer
+        class="border-t dark:border-border-dark border-border-light py-4 text-center transition-colors duration-200">
+        <p class="font-mono text-[10px] dark:text-slate-600 text-slate-400">
+            Docker Awakening Gateway • /_status • v{{ .Version }} &nbsp;•&nbsp; Auto-refresh: 5s
+        </p>
+    </footer>
+
+    <script>
+            (function () {
+                const VERSION = {{ printf "%q" .Version }};
+        let history = {};        // containerName → [{status, ts},...] for heartbeat bars
+        const MAX_BARS = 30;
+        let firstLoad = true;
+
+        // ─── Theme toggle ────────────────────────────────────────────────────────
+        function toggleTheme() {
+            const html = document.documentElement;
+            const isDark = html.classList.contains('dark');
+            if (isDark) {
+                html.classList.remove('dark');
+                localStorage.setItem('dag-theme', 'light');
+                document.getElementById('theme-icon').textContent = 'light_mode';
+            } else {
+                html.classList.add('dark');
+                localStorage.setItem('dag-theme', 'dark');
+                document.getElementById('theme-icon').textContent = 'dark_mode';
+            }
+        }
+        window.toggleTheme = toggleTheme;
+
+        // Restore theme from localStorage
+        (function restoreTheme() {
+            const saved = localStorage.getItem('dag-theme');
+            if (saved === 'light') {
+                document.documentElement.classList.remove('dark');
+                document.getElementById('theme-icon').textContent = 'light_mode';
+            }
+        })();
+
+        // ─── Helpers ─────────────────────────────────────────────────────────────
+        function statusColor(status) {
+            switch (status) {
+                case 'running': return 'status-running';
+                case 'starting': return 'status-starting';
+                case 'failed': case 'dead': return 'status-error';
+                case 'exited': case 'stopped': case 'created': return 'status-stopped';
+                default: return 'status-awakening';
+            }
+        }
+
+        function statusLabel(status, startState) {
+            if (startState === 'starting') return 'Awakening';
+            if (startState === 'failed') return 'Failed';
+            switch (status) {
+                case 'running': return 'Running';
+                case 'exited': case 'created': return 'Stopped';
+                case 'dead': return 'Dead';
+                default: return status.charAt(0).toUpperCase() + status.slice(1);
+            }
+        }
+
+        function effectiveStatus(c) {
+            if (c.start_state === 'starting') return 'starting';
+            if (c.start_state === 'failed') return 'failed';
+            if (c.status === 'exited' || c.status === 'created') return 'stopped';
+            return c.status;
+        }
+
+        function formatDuration(ms) {
+            if (ms < 0) return '--';
+            const s = Math.floor(ms / 1000);
+            if (s < 60) return s + 's';
+            const m = Math.floor(s / 60);
+            if (m < 60) return m + 'm ' + (s % 60) + 's';
+            const h = Math.floor(m / 60);
+            if (h < 24) return h + 'h ' + (m % 60) + 'm';
+            const d = Math.floor(h / 24);
+            return d + 'd ' + (h % 24) + 'h';
+        }
+
+        function timeAgo(isoString) {
+            if (!isoString) return '--';
+            const diff = Date.now() - new Date(isoString).getTime();
+            if (diff < 5000) return 'Now';
+            return formatDuration(diff) + ' ago';
+        }
+
+        function formatTimeout(durationStr) {
+            if (!durationStr || durationStr === '0s') return 'disabled';
+            return durationStr;
+        }
+
+        // ─── Heartbeat bars ──────────────────────────────────────────────────────
+        function recordHistory(name, status) {
+            if (!history[name]) history[name] = [];
+            history[name].push({ status, ts: Date.now() });
+            if (history[name].length > MAX_BARS) {
+                history[name] = history[name].slice(-MAX_BARS);
+            }
+        }
+
+        function barColor(status) {
+            switch (status) {
+                case 'running': return 'bg-status-running';
+                case 'starting': return 'bg-status-starting';
+                case 'failed': case 'dead': return 'bg-status-error';
+                case 'stopped': case 'exited': case 'created': return 'bg-status-stopped/30';
+                default: return 'bg-status-awakening';
+            }
+        }
+
+        function barHeight(status) {
+            switch (status) {
+                case 'running': return 'h-full';
+                case 'starting': return 'h-3/4';
+                case 'failed': case 'dead': return 'h-1/2';
+                case 'stopped': case 'exited': case 'created': return 'h-1/4';
+                default: return 'h-3/4';
+            }
+        }
+
+        function renderBars(name) {
+            const bars = history[name] || [];
+            let html = '';
+            // Pad with empty bars if fewer than MAX_BARS
+            const padCount = MAX_BARS - bars.length;
+            for (let i = 0; i < padCount; i++) {
+                html += `<div class="flex-1 min-w-[3px] max-w-[6px] bg-status-stopped/10 h-1/4 rounded-[1px]"></div>`;
+            }
+            bars.forEach((b, idx) => {
+                const delay = firstLoad ? `animation-delay:${idx * 15}ms;` : '';
+                const animClass = firstLoad ? 'bar-animate' : '';
+                html += `<div class="flex-1 min-w-[3px] max-w-[6px] ${barColor(b.status)} ${barHeight(b.status)} rounded-[1px] ${animClass}" style="${delay}" title="${new Date(b.ts).toLocaleTimeString()} — ${b.status}"></div>`;
+            });
+            return html;
+        }
+
+        // ─── Card rendering ──────────────────────────────────────────────────────
+        function renderCard(c) {
+            const eff = effectiveStatus(c);
+            const color = statusColor(eff);
+            const label = statusLabel(c.status, c.start_state);
+            const isStarting = c.start_state === 'starting';
+            const isStopped = eff === 'stopped';
+            const isFailed = eff === 'failed';
+            const opacity = isStopped ? 'opacity-75 hover:opacity-100' : '';
+            const borderExtra = isFailed ? 'dark:border-status-error/40 border-status-error/30' : isStarting ? 'dark:border-primary/40 border-primary/30' : '';
+
+            // Uptime
+            let uptime = '--';
+            if (c.started_at && c.status === 'running') {
+                uptime = formatDuration(Date.now() - new Date(c.started_at).getTime());
+            }
+
+            // Last request
+            const lastReq = timeAgo(c.last_request);
+
+            // Wake button
+            const wakeBtn = isStopped ? `<button onclick="wakeContainer('${c.name}')" class="px-2.5 py-1 rounded text-[10px] font-bold font-mono uppercase tracking-wider dark:bg-primary/10 bg-primary/5 text-primary dark:border-primary/20 border-primary/20 border hover:bg-primary/20 transition-colors flex items-center gap-1"><span class="material-symbols-outlined text-[12px]">play_arrow</span>Wake</button>` : '';
+
+            // Starting indicator
+            const startingIcon = isStarting ? `<span class="material-symbols-outlined text-[12px] animate-spin-slow">sync</span>` : `<span class="w-1.5 h-1.5 rounded-full bg-${color}${isStarting ? ' animate-pulse-dot' : ''}"></span>`;
+
+            return `
+    <div class="group dark:bg-card-dark bg-card-light dark:border-border-dark border-border-light border rounded-xl p-5 hover:dark:border-slate-600 hover:border-slate-300 transition-colors shadow-lg dark:shadow-black/20 shadow-slate-200/50 flex flex-col ${opacity} ${borderExtra}">
+      <!-- Header -->
+      <div class="flex justify-between items-start mb-4">
+        <div class="flex items-center gap-3 ${isStopped ? 'dark:grayscale-[30%]' : ''}">
+          <div class="w-10 h-10 rounded-lg dark:bg-primary/10 bg-primary/5 flex items-center justify-center text-primary dark:border-primary/20 border-primary/10 border">
+            <span class="material-symbols-outlined">deployed_code</span>
+          </div>
+          <div>
+            <h3 class="dark:text-white text-slate-800 font-mono font-bold text-sm tracking-wide">${c.name}</h3>
+            <p class="text-xs dark:text-slate-500 text-slate-400 font-mono truncate max-w-[180px]">${c.image}</p>
+          </div>
+        </div>
+        <span class="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-${color}/10 text-${color} border border-${color}/20 flex items-center gap-1.5 whitespace-nowrap">
+          ${startingIcon}
+          ${label}
+        </span>
+      </div>
+
+      <!-- Heartbeat bars -->
+      <div class="mb-5">
+        <div class="flex justify-between text-[10px] dark:text-slate-500 text-slate-400 font-mono mb-1.5">
+          <span>${MAX_BARS * 5}s ago</span>
+          <span>now</span>
+        </div>
+        <div class="flex gap-[2px] h-8 items-end">
+          ${renderBars(c.name)}
+        </div>
+      </div>
+
+      <!-- Metrics -->
+      <div class="grid grid-cols-3 gap-2 mb-5">
+        <div class="dark:bg-bg-dark/50 bg-slate-50 rounded p-2 dark:border-border-dark border-border-light border">
+          <p class="text-[10px] dark:text-slate-500 text-slate-400 uppercase font-mono mb-1">Uptime</p>
+          <p class="dark:text-white text-slate-700 font-mono font-medium text-sm">${uptime}</p>
+        </div>
+        <div class="dark:bg-bg-dark/50 bg-slate-50 rounded p-2 dark:border-border-dark border-border-light border">
+          <p class="text-[10px] dark:text-slate-500 text-slate-400 uppercase font-mono mb-1">Last Req</p>
+          <p class="dark:text-white text-slate-700 font-mono font-medium text-sm">${lastReq}</p>
+        </div>
+        <div class="dark:bg-bg-dark/50 bg-slate-50 rounded p-2 dark:border-border-dark border-border-light border">
+          <p class="text-[10px] dark:text-slate-500 text-slate-400 uppercase font-mono mb-1">Idle T/O</p>
+          <p class="dark:text-white text-slate-700 font-mono font-medium text-sm">${formatTimeout(c.idle_timeout)}</p>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="mt-auto border-t dark:border-border-dark border-border-light pt-3 flex justify-between items-center">
+        <div class="flex items-center gap-4 text-xs dark:text-slate-500 text-slate-400 font-mono">
+          <span class="flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">lan</span> :${c.target_port}</span>
+          ${c.network ? `<span class="flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">hub</span> ${c.network}</span>` : ''}
+        </div>
+        ${wakeBtn}
+      </div>
+    </div>`;
+        }
+
+        // ─── Fetch & update ──────────────────────────────────────────────────────
+        async function fetchStatus() {
+            try {
+                const r = await fetch('/_status/api');
+                if (!r.ok) return;
+                const data = await r.json();
+
+                // Update timestamp
+                const ts = new Date(data.updated_at);
+                document.getElementById('last-updated').textContent = ts.toLocaleTimeString();
+
+                const containers = data.containers || [];
+
+                // Summary badges
+                const total = containers.length;
+                const running = containers.filter(c => c.status === 'running').length;
+                const stopped = total - running;
+                document.getElementById('badge-total').textContent = total + ' Total';
+                document.getElementById('badge-running').textContent = running + ' Running';
+                document.getElementById('badge-stopped').textContent = stopped + ' Stopped';
+
+                // Record history for each container
+                containers.forEach(c => {
+                    recordHistory(c.name, effectiveStatus(c));
+                });
+
+                // Render cards
+                const grid = document.getElementById('container-grid');
+                const emptyState = document.getElementById('empty-state');
+                if (containers.length === 0) {
+                    grid.classList.add('hidden');
+                    emptyState.classList.remove('hidden');
+                    return;
+                }
+                grid.classList.remove('hidden');
+                emptyState.classList.add('hidden');
+                grid.innerHTML = containers.map(renderCard).join('');
+                firstLoad = false;
+            } catch (e) {
+                console.error('Status fetch failed:', e);
+            }
+        }
+        window.fetchStatus = fetchStatus;
+
+        // ─── Wake container ──────────────────────────────────────────────────────
+        async function wakeContainer(name) {
+            try {
+                await fetch('/_status/wake?container=' + encodeURIComponent(name), { method: 'POST' });
+                // Immediately refresh
+                setTimeout(fetchStatus, 500);
+            } catch (e) {
+                console.error('Wake failed:', e);
+            }
+        }
+        window.wakeContainer = wakeContainer;
+
+        // Start polling
+        fetchStatus();
+        setInterval(fetchStatus, 5000);
+}) ();
+    </script>
+
+</body>
+
+</html>
