@@ -13,6 +13,8 @@
 ### Configuration
 - [x] **YAML config file** (`config.yaml`) — per-container settings, mounted via volume
 - [x] **`CONFIG_PATH` env override** — point to any path for the config file
+- [x] **Config validation at startup** — fail fast with clear messages if required fields are missing
+- [x] **Config hot-reload** — reload `config.yaml` on SIGHUP without restarting the gateway
 - [x] **Per-container `start_timeout`** — max time to wait for docker start + TCP probe
 - [x] **Per-container `idle_timeout`** — auto-stop containers idle longer than threshold (0 = disabled)
 - [x] **Per-container `target_port`** — proxy to any port on the container
@@ -59,11 +61,6 @@
 - [x] **`/_status/wake` action** — POST endpoint to trigger container start from the dashboard UI
 
 ---
-
-## 🚧 In Progress / Near-term
-
-- [ ] **Config validation at startup** — fail fast with clear messages if required fields are missing
-- [ ] **Config hot-reload** — reload `config.yaml` on SIGHUP without restarting the gateway
 
 ## 📅 Medium-term
 

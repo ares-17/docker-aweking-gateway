@@ -181,10 +181,9 @@ func (m *ContainerManager) probeTCPReady(ctx context.Context, cfg *ContainerConf
 	return nil
 }
 
-// StartIdleWatcher starts a background goroutine that periodically checks
-// each container's last activity time. Containers with IdleTimeout > 0
-// that have been idle longer than their timeout are stopped automatically.
-func (m *ContainerManager) StartIdleWatcher(ctx context.Context, cfgs []ContainerConfig) {
+// StartIdleWatcher begins a background routine that periodically checks
+// container activity. If a container's idle_timeout is reached, it shuts it down.
+func (m *ContainerManager) StartIdleWatcher(ctx context.Context, configProvider func() []ContainerConfig) {
 	go func() {
 		ticker := time.NewTicker(1 * time.Minute)
 		defer ticker.Stop()
@@ -193,7 +192,7 @@ func (m *ContainerManager) StartIdleWatcher(ctx context.Context, cfgs []Containe
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				m.checkIdle(ctx, cfgs)
+				m.checkIdle(ctx, configProvider())
 			}
 		}
 	}()

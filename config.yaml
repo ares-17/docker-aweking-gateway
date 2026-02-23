@@ -17,7 +17,7 @@ containers:
     icon: "nginx"
     target_port: "80"
     network: ""         # leave empty to use first available network
-    start_timeout: "90s"
+    start_timeout: "120s"
     idle_timeout: "5m"
     redirect_path: "/"
 

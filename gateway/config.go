@@ -68,7 +68,46 @@ func LoadConfig() (*GatewayConfig, error) {
 	}
 
 	applyDefaults(&cfg)
+
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid configuration: %w", err)
+	}
+
 	return &cfg, nil
+}
+
+// Validate checks if the loaded configuration is valid.
+func (c *GatewayConfig) Validate() error {
+	if c.Gateway.Port == "" {
+		return fmt.Errorf("gateway.port cannot be empty")
+	}
+
+	seenNames := make(map[string]bool)
+	seenHosts := make(map[string]bool)
+
+	for i, ctr := range c.Containers {
+		if ctr.Name == "" {
+			return fmt.Errorf("container #%d is missing required field 'name'", i+1)
+		}
+		if ctr.Host == "" {
+			return fmt.Errorf("container %q is missing required field 'host'", ctr.Name)
+		}
+		if ctr.TargetPort == "" {
+			return fmt.Errorf("container %q is missing required field 'target_port'", ctr.Name)
+		}
+
+		if seenNames[ctr.Name] {
+			return fmt.Errorf("duplicate container name found: %q", ctr.Name)
+		}
+		seenNames[ctr.Name] = true
+
+		if seenHosts[ctr.Host] {
+			return fmt.Errorf("duplicate host mapped: %q (in container %q)", ctr.Host, ctr.Name)
+		}
+		seenHosts[ctr.Host] = true
+	}
+
+	return nil
 }
 
 // applyDefaults fills in sensible defaults for any unset field.

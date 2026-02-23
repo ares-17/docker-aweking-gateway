@@ -24,6 +24,7 @@ var templatesFS embed.FS
 // Server handles HTTP traffic for the gateway.
 type Server struct {
 	manager     *ContainerManager
+	configMu    sync.RWMutex
 	cfg         *GatewayConfig
 	hostIndex   map[string]*ContainerConfig
 	tmpl        *template.Template
@@ -55,20 +56,40 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/", s.handleRequest)
 
 	srv := &http.Server{
-		Addr:         ":" + s.cfg.Gateway.Port,
+		Addr:         ":" + s.GetConfig().Gateway.Port,
 		Handler:      mux,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 	}
 
-	fmt.Printf("Docker Awakening Gateway v%s listening on :%s\n", gatewayVersion, s.cfg.Gateway.Port)
+	fmt.Printf("Docker Awakening Gateway v%s listening on :%s\n", gatewayVersion, s.GetConfig().Gateway.Port)
 	return srv.ListenAndServe()
+}
+
+// ─── Config Hot-Reload ────────────────────────────────────────────────────────
+
+// ReloadConfig safely swaps the active configuration.
+func (s *Server) ReloadConfig(newCfg *GatewayConfig) {
+	s.configMu.Lock()
+	defer s.configMu.Unlock()
+	s.cfg = newCfg
+	s.hostIndex = BuildHostIndex(newCfg)
+}
+
+// GetConfig safely retrieves the current configuration.
+func (s *Server) GetConfig() *GatewayConfig {
+	s.configMu.RLock()
+	defer s.configMu.RUnlock()
+	return s.cfg
 }
 
 // ─── Request routing ──────────────────────────────────────────────────────────
 
 // resolveConfig maps an incoming request to its ContainerConfig by Host header.
 func (s *Server) resolveConfig(r *http.Request) *ContainerConfig {
+	s.configMu.RLock()
+	defer s.configMu.RUnlock()
+
 	host := r.Host
 	if cfg, ok := s.hostIndex[host]; ok {
 		return cfg
@@ -424,29 +445,30 @@ func (s *Server) handleStatusAPI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
+	cfg := s.GetConfig()
 	result := statusAPIResponse{
 		UpdatedAt:  time.Now().UTC().Format(time.RFC3339),
-		Containers: make([]statusContainerJSON, 0, len(s.cfg.Containers)),
+		Containers: make([]statusContainerJSON, 0, len(cfg.Containers)),
 	}
 
-	for i := range s.cfg.Containers {
-		cfg := &s.cfg.Containers[i]
+	for i := range cfg.Containers {
+		c := &cfg.Containers[i]
 		entry := statusContainerJSON{
-			Name:         cfg.Name,
-			Host:         cfg.Host,
-			Icon:         cfg.Icon,
-			TargetPort:   cfg.TargetPort,
-			StartTimeout: cfg.StartTimeout.String(),
-			IdleTimeout:  cfg.IdleTimeout.String(),
-			Network:      cfg.Network,
+			Name:         c.Name,
+			Host:         c.Host,
+			Icon:         c.Icon,
+			TargetPort:   c.TargetPort,
+			StartTimeout: c.StartTimeout.String(),
+			IdleTimeout:  c.IdleTimeout.String(),
+			Network:      c.Network,
 		}
 
 		// Gateway-level start state
-		startState, _ := s.manager.GetStartState(cfg.Name)
+		startState, _ := s.manager.GetStartState(c.Name)
 		entry.StartState = startState
 
 		// Docker inspect for live status + image + timestamps
-		info, err := s.manager.client.InspectContainer(ctx, cfg.Name)
+		info, err := s.manager.client.InspectContainer(ctx, c.Name)
 		if err != nil {
 			entry.Status = "unknown"
 			entry.Image = "?"
@@ -460,7 +482,7 @@ func (s *Server) handleStatusAPI(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Last request from in-memory activity tracker
-		if t, ok := s.manager.GetLastSeen(cfg.Name); ok {
+		if t, ok := s.manager.GetLastSeen(c.Name); ok {
 			ts := t.UTC().Format(time.RFC3339)
 			entry.LastRequest = &ts
 		}
@@ -489,26 +511,26 @@ func (s *Server) handleStatusWake(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Find matching container config
-	var cfg *ContainerConfig
-	for i := range s.cfg.Containers {
-		if s.cfg.Containers[i].Name == name {
-			cfg = &s.cfg.Containers[i]
+	cfg := s.GetConfig()
+	var targetCfg *ContainerConfig
+	for i := range cfg.Containers {
+		if cfg.Containers[i].Name == name {
+			targetCfg = &cfg.Containers[i]
 			break
 		}
 	}
-	if cfg == nil {
+	if targetCfg == nil {
 		http.Error(w, "unknown container", http.StatusBadRequest)
 		return
 	}
 
 	// Trigger async start
-	s.manager.InitStartState(cfg.Name)
+	s.manager.InitStartState(targetCfg.Name)
 	go func() {
-		bgCtx, cancel := context.WithTimeout(context.Background(), cfg.StartTimeout+10*time.Second)
+		bgCtx, cancel := context.WithTimeout(context.Background(), targetCfg.StartTimeout+10*time.Second)
 		defer cancel()
-		if err := s.manager.EnsureRunning(bgCtx, cfg); err != nil {
-			fmt.Printf("status-wake: start error for %q: %v\n", cfg.Name, err)
+		if err := s.manager.EnsureRunning(bgCtx, targetCfg); err != nil {
+			fmt.Printf("status-wake: start error for %q: %v\n", targetCfg.Name, err)
 		}
 	}()
 

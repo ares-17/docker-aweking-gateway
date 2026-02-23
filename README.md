@@ -48,10 +48,12 @@ gateway:
 containers:
   - name: "my-app"               # Docker container name (required)
     host: "my-app.example.com"   # Host header to match incoming requests (required)
-    target_port: "80"            # port to proxy to on the container (default: 80)
-    start_timeout: "60s"         # max wait for container to start; shows error page on expiry (default: 60s)
-    idle_timeout: "30m"          # auto-stop after this much inactivity; 0 = never auto-stop (default: 0)
-    redirect_path: "/"           # URL path the browser is redirected to once container is up (default: /)
+    target_port: "80"            # Port the container listens on (e.g., `80`, `3000`) (default: 80)
+    start_timeout: "60s"         # Max time to wait for container to start (Docker) + TCP probe. Gateway will error if timeout reached (default: 60s)
+    idle_timeout: "30m"          # Auto-stop container after X time of no requests (e.g., `10m`). `0` disables auto-stop (default: 0)
+    network: ""                  # Instructs gateway to resolve container IP from this specific Docker network name. Useful if container is on multiple networks.
+    redirect_path: "/"           # Absolute path to redirect the browser to once target is running (default: /)
+    icon: "docker"               # [Simple Icons](https://simpleicons.org/) slug for the `/_status` dashboard (e.g. `nginx`, `redis`) (default: `docker`)
 ```
 
 ### Options reference
