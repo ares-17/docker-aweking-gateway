@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -12,16 +12,25 @@ import (
 )
 
 func main() {
+	// Configure structured JSON logging as the global default.
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+
+	// Root context — cancelled on SIGTERM / SIGINT for graceful shutdown.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// Load YAML configuration (path from CONFIG_PATH env, default /etc/gateway/config.yaml)
 	cfg, err := gateway.LoadConfig()
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		slog.Error("failed to load config", "error", err)
+		os.Exit(1)
 	}
 
 	// Initialize Docker client
 	dockerClient, err := gateway.NewDockerClient()
 	if err != nil {
-		log.Fatalf("Failed to initialize Docker client: %v", err)
+		slog.Error("failed to initialize Docker client", "error", err)
+		os.Exit(1)
 	}
 	defer dockerClient.Close()
 
@@ -31,35 +40,44 @@ func main() {
 	// Initialize and start the HTTP server
 	server, err := gateway.NewServer(manager, cfg)
 	if err != nil {
-		log.Fatalf("Failed to initialize server: %v", err)
+		slog.Error("failed to initialize server", "error", err)
+		os.Exit(1)
 	}
 
 	// Initialize Auto-Discovery
 	discoveryManager := gateway.NewDiscoveryManager(dockerClient, cfg, server.ReloadConfig)
-	discoveryManager.Start(context.Background(), 15*time.Second)
+	discoveryManager.Start(ctx, 15*time.Second)
 
 	// Start idle-watcher goroutine with a callback to get the latest config
-	manager.StartIdleWatcher(context.Background(), func() []gateway.ContainerConfig {
+	manager.StartIdleWatcher(ctx, func() []gateway.ContainerConfig {
 		return server.GetConfig().Containers
 	})
 
-	// Setup config hot-reload on SIGHUP
+	// Signal handling: SIGHUP → hot-reload config, SIGTERM/SIGINT → graceful shutdown.
 	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGHUP)
+	signal.Notify(sigChan, syscall.SIGHUP, syscall.SIGTERM, syscall.SIGINT)
 	go func() {
-		for range sigChan {
-			log.Println("Received SIGHUP, reloading static configuration...")
-			newCfg, err := gateway.LoadConfig()
-			if err != nil {
-				log.Printf("Hot-reload failed: %v", err)
-				continue
+		for sig := range sigChan {
+			switch sig {
+			case syscall.SIGHUP:
+				slog.Info("received SIGHUP, reloading static configuration")
+				newCfg, err := gateway.LoadConfig()
+				if err != nil {
+					slog.Error("hot-reload failed", "error", err)
+					continue
+				}
+				discoveryManager.UpdateStaticConfig(newCfg)
+				slog.Info("static configuration reloaded and discovery pass triggered")
+			case syscall.SIGTERM, syscall.SIGINT:
+				slog.Info("received shutdown signal, initiating graceful shutdown", "signal", sig.String())
+				cancel()
+				return
 			}
-			discoveryManager.UpdateStaticConfig(newCfg)
-			log.Println("Static configuration reloaded and discovery pass triggered successfully")
 		}
 	}()
 
-	if err := server.Start(); err != nil {
-		log.Fatalf("Server error: %v", err)
+	if err := server.Start(ctx); err != nil {
+		slog.Error("server error", "error", err)
+		os.Exit(1)
 	}
 }

@@ -78,10 +78,10 @@
 - [x] **Trusted proxy configuration** — only trust `X-Forwarded-For` from known upstream proxies for rate limiting
 
 ### Reliability & Quality
-- [ ] **Graceful shutdown** — `SIGTERM` / `SIGINT` triggers `http.Server.Shutdown()` with grace period + cancels all background goroutines
-- [ ] **Structured logging** — migrate from `log.Printf` / `fmt.Printf` to Go 1.21+ `log/slog` for JSON-structured output
-- [ ] **Discovery change detection** — only trigger `ReloadConfig` when the merged config actually differs from the current one
-- [ ] **Unit tests** — table-driven tests for config validation, discovery merging, rate limiter, and proxy routing
+- [x] **Graceful shutdown** — `SIGTERM` / `SIGINT` triggers `http.Server.Shutdown()` with grace period + cancels all background goroutines
+- [x] **Structured logging** — migrate from `log.Printf` / `fmt.Printf` to Go 1.21+ `log/slog` for JSON-structured output
+- [x] **Discovery change detection** — only trigger `ReloadConfig` when the merged config actually differs from the current one
+- [x] **Unit tests** — table-driven tests for config validation, discovery merging, rate limiter, and proxy routing
 
 ## 🔭 Long-term
 

@@ -7,7 +7,97 @@ import (
 	"time"
 )
 
-// ─── applyDefaults ────────────────────────────────────────────────────────────
+// ─── GatewayConfig.Equal ──────────────────────────────────────────────────────
+
+func TestGatewayConfigEqual(t *testing.T) {
+	base := func() *GatewayConfig {
+		return &GatewayConfig{
+			Gateway: GlobalConfig{Port: "8080", LogLines: 30},
+			Containers: []ContainerConfig{
+				{Name: "app", Host: "app.local", TargetPort: "80", StartTimeout: 60 * time.Second},
+			},
+		}
+	}
+
+	tests := []struct {
+		name   string
+		a, b   *GatewayConfig
+		want   bool
+	}{
+		{
+			name: "identical configs",
+			a:    base(),
+			b:    base(),
+			want: true,
+		},
+		{
+			name: "different port",
+			a:    base(),
+			b: func() *GatewayConfig {
+				c := base()
+				c.Gateway.Port = "9090"
+				return c
+			}(),
+			want: false,
+		},
+		{
+			name: "different container name",
+			a:    base(),
+			b: func() *GatewayConfig {
+				c := base()
+				c.Containers[0].Name = "other"
+				return c
+			}(),
+			want: false,
+		},
+		{
+			name: "extra container",
+			a:    base(),
+			b: func() *GatewayConfig {
+				c := base()
+				c.Containers = append(c.Containers, ContainerConfig{Name: "db", Host: "db.local", TargetPort: "5432"})
+				return c
+			}(),
+			want: false,
+		},
+		{
+			name: "both nil",
+			a:    nil,
+			b:    nil,
+			want: true,
+		},
+		{
+			name: "one nil",
+			a:    base(),
+			b:    nil,
+			want: false,
+		},
+		{
+			name: "empty containers vs no containers",
+			a: &GatewayConfig{Gateway: GlobalConfig{Port: "8080"}},
+			b: &GatewayConfig{Gateway: GlobalConfig{Port: "8080"}, Containers: []ContainerConfig{}},
+			want: false, // nil slice vs empty slice
+		},
+		{
+			name: "different trusted proxies",
+			a:    base(),
+			b: func() *GatewayConfig {
+				c := base()
+				c.Gateway.TrustedProxies = []string{"10.0.0.0/8"}
+				return c
+			}(),
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.a.Equal(tt.b); got != tt.want {
+				t.Errorf("Equal() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
 
 func TestApplyDefaults(t *testing.T) {
 	tests := []struct {

@@ -2,7 +2,7 @@ package gateway
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -15,6 +15,7 @@ type DiscoveryManager struct {
 
 	mu           sync.Mutex
 	staticConfig *GatewayConfig
+	lastConfig   *GatewayConfig // last config pushed via onConfigChange
 }
 
 // NewDiscoveryManager creates a new discovery engine.
@@ -28,9 +29,11 @@ func NewDiscoveryManager(client *DockerClient, staticConfig *GatewayConfig, onCo
 
 // UpdateStaticConfig updates the base static config used during merging,
 // typically called after a SIGHUP hot-reload.
+// It clears the cached lastConfig to force a reload on the next discovery pass.
 func (dm *DiscoveryManager) UpdateStaticConfig(cfg *GatewayConfig) {
 	dm.mu.Lock()
 	dm.staticConfig = cfg
+	dm.lastConfig = nil // force reload
 	dm.mu.Unlock()
 
 	// Trigger an immediate discovery pass with the new static config
@@ -60,7 +63,7 @@ func (dm *DiscoveryManager) Start(ctx context.Context, interval time.Duration) {
 func (dm *DiscoveryManager) runDiscovery(ctx context.Context) {
 	dynamicContainers, err := dm.client.DiscoverLabeledContainers(ctx)
 	if err != nil {
-		log.Printf("discovery: failed to list labeled containers: %v", err)
+		slog.Error("discovery: failed to list labeled containers", "error", err)
 		return
 	}
 
@@ -68,7 +71,20 @@ func (dm *DiscoveryManager) runDiscovery(ctx context.Context) {
 
 	// Ensure the merged configuration is valid before pushing it
 	if err := merged.Validate(); err != nil {
-		log.Printf("discovery: merge resulted in invalid configuration: %v", err)
+		slog.Warn("discovery: merge resulted in invalid configuration", "error", err)
+		return
+	}
+
+	// Only trigger a reload when the config actually changed.
+	dm.mu.Lock()
+	unchanged := dm.lastConfig != nil && dm.lastConfig.Equal(merged)
+	if !unchanged {
+		dm.lastConfig = merged
+	}
+	dm.mu.Unlock()
+
+	if unchanged {
+		slog.Debug("discovery: config unchanged, skipping reload")
 		return
 	}
 
@@ -98,11 +114,11 @@ func (dm *DiscoveryManager) mergeConfigs(dynamic []ContainerConfig) *GatewayConf
 	// 2. Add dynamically discovered containers avoiding conflicts
 	for _, dc := range dynamic {
 		if seenHosts[dc.Host] {
-			log.Printf("discovery: skipping dynamic container %q because host %q is already defined statically", dc.Name, dc.Host)
+			slog.Debug("discovery: skipping dynamic container, host already defined", "container", dc.Name, "host", dc.Host)
 			continue
 		}
 		if seenNames[dc.Name] {
-			log.Printf("discovery: skipping dynamic container %q because it is already defined statically", dc.Name)
+			slog.Debug("discovery: skipping dynamic container, name already defined", "container", dc.Name)
 			continue
 		}
 		merged.Containers = append(merged.Containers, dc)

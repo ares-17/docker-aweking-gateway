@@ -3,10 +3,20 @@ package gateway
 import (
 	"fmt"
 	"os"
+	"reflect"
 	"time"
 
 	"gopkg.in/yaml.v3"
 )
+
+// Equal reports whether two GatewayConfig values are semantically identical.
+// Used by DiscoveryManager to skip no-op config reloads.
+func (c *GatewayConfig) Equal(other *GatewayConfig) bool {
+	if c == nil || other == nil {
+		return c == other
+	}
+	return reflect.DeepEqual(c, other)
+}
 
 // GatewayConfig is the top-level config structure parsed from config.yaml
 type GatewayConfig struct {

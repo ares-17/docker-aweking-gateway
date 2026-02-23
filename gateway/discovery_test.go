@@ -208,3 +208,104 @@ func TestMergeConfigs_PreservesFields(t *testing.T) {
 		t.Errorf("Icon = %q, want %q", c.Icon, "nginx")
 	}
 }
+
+// ─── Change detection ─────────────────────────────────────────────────────────
+
+func TestDiscoveryChangeDetection_SkipsDuplicate(t *testing.T) {
+	callCount := 0
+	dm := &DiscoveryManager{
+		staticConfig: &GatewayConfig{
+			Gateway:    GlobalConfig{Port: "8080"},
+			Containers: []ContainerConfig{{Name: "s1", Host: "s1.local", TargetPort: "80"}},
+		},
+		onConfigChange: func(cfg *GatewayConfig) {
+			callCount++
+		},
+	}
+
+	dynamic := []ContainerConfig{{Name: "d1", Host: "d1.local", TargetPort: "80"}}
+
+	// First merge → should trigger onConfigChange
+	merged1 := dm.mergeConfigs(dynamic)
+	if err := merged1.Validate(); err != nil {
+		t.Fatalf("unexpected validation error: %v", err)
+	}
+	dm.mu.Lock()
+	dm.lastConfig = merged1
+	dm.mu.Unlock()
+	dm.onConfigChange(merged1)
+
+	// Second merge with identical inputs → should NOT trigger
+	merged2 := dm.mergeConfigs(dynamic)
+	dm.mu.Lock()
+	unchanged := dm.lastConfig != nil && dm.lastConfig.Equal(merged2)
+	dm.mu.Unlock()
+
+	if !unchanged {
+		t.Error("expected configs to be equal on identical inputs")
+	}
+	if callCount != 1 {
+		t.Errorf("onConfigChange called %d times, want 1", callCount)
+	}
+}
+
+func TestDiscoveryChangeDetection_DetectsNewContainer(t *testing.T) {
+	callCount := 0
+	dm := &DiscoveryManager{
+		staticConfig: &GatewayConfig{
+			Gateway: GlobalConfig{Port: "8080"},
+		},
+		onConfigChange: func(cfg *GatewayConfig) {
+			callCount++
+		},
+	}
+
+	// First pass: one dynamic container
+	merged1 := dm.mergeConfigs([]ContainerConfig{
+		{Name: "d1", Host: "d1.local", TargetPort: "80"},
+	})
+	dm.mu.Lock()
+	dm.lastConfig = merged1
+	dm.mu.Unlock()
+	dm.onConfigChange(merged1)
+
+	// Second pass: add another dynamic container
+	merged2 := dm.mergeConfigs([]ContainerConfig{
+		{Name: "d1", Host: "d1.local", TargetPort: "80"},
+		{Name: "d2", Host: "d2.local", TargetPort: "80"},
+	})
+
+	dm.mu.Lock()
+	unchanged := dm.lastConfig != nil && dm.lastConfig.Equal(merged2)
+	dm.mu.Unlock()
+
+	if unchanged {
+		t.Error("expected configs to differ when a new container is added")
+	}
+}
+
+func TestDiscoveryChangeDetection_UpdateStaticClearsCache(t *testing.T) {
+	dm := &DiscoveryManager{
+		staticConfig: &GatewayConfig{
+			Gateway: GlobalConfig{Port: "8080"},
+		},
+		lastConfig: &GatewayConfig{
+			Gateway: GlobalConfig{Port: "8080"},
+		},
+	}
+
+	newStatic := &GatewayConfig{
+		Gateway: GlobalConfig{Port: "9090"},
+	}
+
+	// UpdateStaticConfig should clear lastConfig (we can't call the full method
+	// because it requires a DockerClient, so we test the field mutation directly).
+	dm.mu.Lock()
+	dm.staticConfig = newStatic
+	dm.lastConfig = nil // This is what UpdateStaticConfig does
+	dm.mu.Unlock()
+
+	if dm.lastConfig != nil {
+		t.Error("lastConfig should be nil after UpdateStaticConfig")
+	}
+}

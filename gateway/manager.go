@@ -3,7 +3,7 @@ package gateway
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"sync"
 	"time"
@@ -222,9 +222,9 @@ func (m *ContainerManager) checkIdle(ctx context.Context, cfgs []ContainerConfig
 		if err != nil || status != "running" {
 			continue
 		}
-		log.Printf("checkIdle: Stopping %q (idle for %v > %v)", cfg.Name, idleDuration, cfg.IdleTimeout)
+		slog.Info("idle watcher: stopping container", "container", cfg.Name, "idle_duration", idleDuration, "idle_timeout", cfg.IdleTimeout)
 		if err := m.client.StopContainer(ctx, cfg.Name); err != nil {
-			log.Printf("checkIdle: Failed to stop %q: %v", cfg.Name, err)
+			slog.Error("idle watcher: failed to stop container", "container", cfg.Name, "error", err)
 		} else {
 			RecordIdleStop(cfg.Name)
 			m.setStartState(cfg.Name, "unknown", "")

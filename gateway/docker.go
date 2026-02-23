@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"strings"
 	"time"
@@ -95,7 +95,7 @@ func (d *DockerClient) DiscoverLabeledContainers(ctx context.Context) ([]Contain
 		if host, ok := c.Labels["dag.host"]; ok && host != "" {
 			cfg.Host = host
 		} else {
-			log.Printf("discovery: container %q has dag.enabled=true but missing required dag.host", cfg.Name)
+			slog.Warn("discovery: container missing required dag.host", "container", cfg.Name)
 			continue
 		}
 
@@ -109,7 +109,7 @@ func (d *DockerClient) DiscoverLabeledContainers(ctx context.Context) ([]Contain
 			if parseDur, err := time.ParseDuration(val); err == nil {
 				cfg.StartTimeout = parseDur
 			} else {
-				log.Printf("discovery: invalid start_timeout %q for %q: %v", val, cfg.Name, err)
+				slog.Warn("discovery: invalid start_timeout", "value", val, "container", cfg.Name, "error", err)
 			}
 		}
 
@@ -117,7 +117,7 @@ func (d *DockerClient) DiscoverLabeledContainers(ctx context.Context) ([]Contain
 			if parseDur, err := time.ParseDuration(val); err == nil {
 				cfg.IdleTimeout = parseDur
 			} else {
-				log.Printf("discovery: invalid idle_timeout %q for %q: %v", val, cfg.Name, err)
+				slog.Warn("discovery: invalid idle_timeout", "value", val, "container", cfg.Name, "error", err)
 			}
 		}
 

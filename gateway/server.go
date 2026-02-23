@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -34,6 +34,7 @@ type Server struct {
 	trustedCIDRs []*net.IPNet
 	tmpl         *template.Template
 	rateLimiter  *rateLimiter
+	httpServer   *http.Server
 }
 
 func NewServer(manager *ContainerManager, cfg *GatewayConfig) (*Server, error) {
@@ -52,7 +53,9 @@ func NewServer(manager *ContainerManager, cfg *GatewayConfig) (*Server, error) {
 	}, nil
 }
 
-func (s *Server) Start() error {
+// Start listens for HTTP traffic and blocks until ctx is cancelled.
+// On cancellation it performs a graceful shutdown with a 15-second deadline.
+func (s *Server) Start(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/_health", s.handleHealth)
 	mux.HandleFunc("/_logs", s.handleLogs)
@@ -62,7 +65,7 @@ func (s *Server) Start() error {
 	mux.Handle("/_metrics", promhttp.Handler())
 	mux.HandleFunc("/", s.handleRequest)
 
-	srv := &http.Server{
+	s.httpServer = &http.Server{
 		Addr:         ":" + s.GetConfig().Gateway.Port,
 		Handler:      mux,
 		ReadTimeout:  30 * time.Second,
@@ -71,10 +74,32 @@ func (s *Server) Start() error {
 	}
 
 	// Start rate limiter cleanup goroutine
-	s.rateLimiter.startCleanup(context.Background(), 5*time.Minute)
+	s.rateLimiter.startCleanup(ctx, 5*time.Minute)
 
-	fmt.Printf("Docker Awakening Gateway v%s listening on :%s\n", gatewayVersion, s.GetConfig().Gateway.Port)
-	return srv.ListenAndServe()
+	// Run ListenAndServe in a goroutine so we can wait for ctx cancellation.
+	errCh := make(chan error, 1)
+	go func() {
+		slog.Info("gateway started", "version", gatewayVersion, "port", s.GetConfig().Gateway.Port)
+		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			errCh <- err
+		}
+		close(errCh)
+	}()
+
+	// Block until the root context is cancelled or ListenAndServe fails.
+	select {
+	case err := <-errCh:
+		return err
+	case <-ctx.Done():
+	}
+
+	// Graceful shutdown with a 15-second deadline.
+	const shutdownGrace = 15 * time.Second
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownGrace)
+	defer shutdownCancel()
+
+	slog.Info("shutting down gateway", "grace_period", shutdownGrace)
+	return s.httpServer.Shutdown(shutdownCtx)
 }
 
 // ─── Config Hot-Reload ────────────────────────────────────────────────────────
@@ -180,7 +205,7 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 		bgCtx, cancel := context.WithTimeout(context.Background(), cfg.StartTimeout+10*time.Second)
 		defer cancel()
 		if err := s.manager.EnsureRunning(bgCtx, cfg); err != nil {
-			fmt.Printf("async start error for %q: %v\n", cfg.Name, err)
+			slog.Error("async start error", "container", cfg.Name, "error", err)
 		}
 	}()
 
@@ -381,7 +406,7 @@ func parseTrustedProxies(proxies []string) []*net.IPNet {
 	for _, p := range proxies {
 		_, cidr, err := net.ParseCIDR(p)
 		if err != nil {
-			log.Printf("warning: invalid trusted_proxies CIDR %q: %v", p, err)
+			slog.Warn("invalid trusted_proxies CIDR", "cidr", p, "error", err)
 			continue
 		}
 		cidrs = append(cidrs, cidr)
@@ -514,7 +539,7 @@ func (s *Server) serveLoadingPage(w http.ResponseWriter, r *http.Request, cfg *C
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.tmpl.ExecuteTemplate(w, "loading.html", data); err != nil {
-		fmt.Printf("template error (loading): %v\n", err)
+		slog.Error("template render failed", "template", "loading", "error", err)
 	}
 }
 
@@ -528,7 +553,7 @@ func (s *Server) serveErrorPage(w http.ResponseWriter, r *http.Request, cfg *Con
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusBadGateway)
 	if err := s.tmpl.ExecuteTemplate(w, "error.html", data); err != nil {
-		fmt.Printf("template error (error): %v\n", err)
+		slog.Error("template render failed", "template", "error", "error", err)
 	}
 }
 
@@ -541,7 +566,7 @@ func (s *Server) handleStatusPage(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.tmpl.ExecuteTemplate(w, "status.html", data); err != nil {
-		fmt.Printf("template error (status): %v\n", err)
+		slog.Error("template render failed", "template", "status", "error", err)
 		http.Error(w, "Failed to render status page", http.StatusInternalServerError)
 	}
 }
@@ -644,7 +669,7 @@ func (s *Server) handleStatusWake(w http.ResponseWriter, r *http.Request) {
 		bgCtx, cancel := context.WithTimeout(context.Background(), targetCfg.StartTimeout+10*time.Second)
 		defer cancel()
 		if err := s.manager.EnsureRunning(bgCtx, targetCfg); err != nil {
-			fmt.Printf("status-wake: start error for %q: %v\n", targetCfg.Name, err)
+			slog.Error("status-wake start error", "container", targetCfg.Name, "error", err)
 		}
 	}()
 
