@@ -355,6 +355,7 @@ type statusContainerJSON struct {
 	Status       string  `json:"status"`
 	StartState   string  `json:"start_state"`
 	Image        string  `json:"image"`
+	Icon         string  `json:"icon"`
 	TargetPort   string  `json:"target_port"`
 	StartTimeout string  `json:"start_timeout"`
 	IdleTimeout  string  `json:"idle_timeout"`
@@ -433,6 +434,7 @@ func (s *Server) handleStatusAPI(w http.ResponseWriter, r *http.Request) {
 		entry := statusContainerJSON{
 			Name:         cfg.Name,
 			Host:         cfg.Host,
+			Icon:         cfg.Icon,
 			TargetPort:   cfg.TargetPort,
 			StartTimeout: cfg.StartTimeout.String(),
 			IdleTimeout:  cfg.IdleTimeout.String(),

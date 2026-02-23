@@ -43,6 +43,10 @@ type ContainerConfig struct {
 	// RedirectPath is the URL path the browser is sent to once the container is
 	// running. Useful when the web UI is not at "/". (default: "/")
 	RedirectPath string `yaml:"redirect_path"`
+	// Icon is an optional Simple Icons slug (e.g. "nginx", "redis", "postgresql").
+	// Displayed on the /_status dashboard card. See https://simpleicons.org
+	// for available slugs. (default: "docker")
+	Icon string `yaml:"icon"`
 }
 
 // LoadConfig reads and parses the YAML config file.
@@ -87,6 +91,9 @@ func applyDefaults(cfg *GatewayConfig) {
 		// IdleTimeout 0 means "never auto-stop" — no default override needed
 		if c.RedirectPath == "" {
 			c.RedirectPath = "/"
+		}
+		if c.Icon == "" {
+			c.Icon = "docker"
 		}
 	}
 }

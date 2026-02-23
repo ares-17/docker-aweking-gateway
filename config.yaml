@@ -14,6 +14,7 @@ containers:
   # ------------------------------------------------------------------
   - name: "slow-app"
     host: "slow-app.localhost:8080"
+    icon: "nginx"
     target_port: "80"
     network: ""         # leave empty to use first available network
     start_timeout: "90s"
@@ -27,6 +28,7 @@ containers:
   # ------------------------------------------------------------------
   - name: "fail-app"
     host: "fail-app.localhost:8080"
+    icon: "docker"
     target_port: "80"
     network: ""         # leave empty to use first available network
     start_timeout: "8s"
