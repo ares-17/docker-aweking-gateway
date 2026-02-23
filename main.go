@@ -1,13 +1,19 @@
 package main
 
 import (
+	"context"
 	"log"
-	"os"
 
 	"docker-gateway/gateway"
 )
 
 func main() {
+	// Load YAML configuration (path from CONFIG_PATH env, default /etc/gateway/config.yaml)
+	cfg, err := gateway.LoadConfig()
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
+
 	// Initialize Docker client
 	dockerClient, err := gateway.NewDockerClient()
 	if err != nil {
@@ -18,18 +24,15 @@ func main() {
 	// Initialize Container Manager
 	manager := gateway.NewContainerManager(dockerClient)
 
-	// Initialize Server
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
+	// Start idle-watcher goroutine (stops containers after their idle_timeout)
+	manager.StartIdleWatcher(context.Background(), cfg.Containers)
 
-	server, err := gateway.NewServer(manager, port)
+	// Initialize and start the HTTP server
+	server, err := gateway.NewServer(manager, cfg)
 	if err != nil {
 		log.Fatalf("Failed to initialize server: %v", err)
 	}
 
-	// Start Server
 	if err := server.Start(); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}

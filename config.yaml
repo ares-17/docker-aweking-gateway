@@ -1,0 +1,32 @@
+# Docker Awakening Gateway — Test Configuration
+#
+# This config is used by docker-compose.yml for local testing.
+# Mount path: /etc/gateway/config.yaml (set via CONFIG_PATH env var)
+
+gateway:
+  port: "8080"
+  log_lines: 30
+
+containers:
+  # ------------------------------------------------------------------
+  # slow-app: nginx with a 15-second boot delay.
+  # Tests: loading page, log box content, progress bar, auto-redirect.
+  # ------------------------------------------------------------------
+  - name: "slow-app"
+    host: "slow-app.localhost:8080"
+    target_port: "80"
+    start_timeout: "90s"   # generous: boot takes ~15s
+    idle_timeout: "5m"     # auto-stop after 5 min idle
+    redirect_path: "/"
+
+  # ------------------------------------------------------------------
+  # fail-app: always exits immediately with code 1.
+  # Tests: start_timeout expiry → error page.
+  # Use a short start_timeout so the error page shows quickly.
+  # ------------------------------------------------------------------
+  - name: "fail-app"
+    host: "fail-app.localhost:8080"
+    target_port: "80"
+    start_timeout: "8s"    # short: force timeout fast for testing
+    idle_timeout: "0"      # never auto-stop (irrelevant — always fails)
+    redirect_path: "/"

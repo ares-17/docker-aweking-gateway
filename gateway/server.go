@@ -3,12 +3,12 @@ package gateway
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 )
@@ -16,117 +16,159 @@ import (
 //go:embed templates/*.html
 var templatesFS embed.FS
 
+// Server handles HTTP traffic for the gateway.
 type Server struct {
-	manager *ContainerManager
-	port    string
-	tmpl    *template.Template
+	manager   *ContainerManager
+	cfg       *GatewayConfig
+	hostIndex map[string]*ContainerConfig // host → config, O(1) lookup
+	tmpl      *template.Template
 }
 
-func NewServer(manager *ContainerManager, port string) (*Server, error) {
+func NewServer(manager *ContainerManager, cfg *GatewayConfig) (*Server, error) {
 	tmpl, err := template.ParseFS(templatesFS, "templates/*.html")
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse templates: %w", err)
 	}
 
 	return &Server{
-		manager: manager,
-		port:    port,
-		tmpl:    tmpl,
+		manager:   manager,
+		cfg:       cfg,
+		hostIndex: BuildHostIndex(cfg),
+		tmpl:      tmpl,
 	}, nil
 }
 
 func (s *Server) Start() error {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/_health", s.handleHealthCheck)
+	mux.HandleFunc("/_health", s.handleHealth)
+	mux.HandleFunc("/_logs", s.handleLogs)
 	mux.HandleFunc("/", s.handleRequest)
 
-	server := &http.Server{
-		Addr:         ":" + s.port,
+	srv := &http.Server{
+		Addr:         ":" + s.cfg.Gateway.Port,
 		Handler:      mux,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 	}
 
-	fmt.Printf("Docker Awakening Gateway listening on port %s\n", s.port)
-	return server.ListenAndServe()
+	fmt.Printf("Docker Awakening Gateway listening on :%s\n", s.cfg.Gateway.Port)
+	return srv.ListenAndServe()
 }
 
-func (s *Server) resolveContainerName(r *http.Request) string {
-	// 1. Check query param (useful for testing)
-	if name := r.URL.Query().Get("container"); name != "" {
-		return name
-	}
-
-	// 2. Resolve from Host header (e.g., "my-app.localhost" -> "my-app")
+// resolveConfig maps an incoming request to its ContainerConfig by Host header.
+func (s *Server) resolveConfig(r *http.Request) *ContainerConfig {
 	host := r.Host
-	if strings.Contains(host, ":") {
-		host = strings.Split(host, ":")[0]
+	// Exact match first
+	if cfg, ok := s.hostIndex[host]; ok {
+		return cfg
 	}
-	
-	// If it's a subdomain like app.example.com, we might want "app"
-	// For simplicity, we'll try the full host or the first part
-	parts := strings.Split(host, ".")
-	if len(parts) > 0 && parts[0] != "localhost" {
-		return parts[0]
+	// Fallback: strip port and try bare hostname
+	if idx := strings.LastIndex(host, ":"); idx != -1 {
+		if cfg, ok := s.hostIndex[host[:idx]]; ok {
+			return cfg
+		}
 	}
-
-	return ""
+	// Query-param override (for testing: ?container=my-app)
+	if name := r.URL.Query().Get("container"); name != "" {
+		for i := range s.cfg.Containers {
+			if s.cfg.Containers[i].Name == name {
+				return &s.cfg.Containers[i]
+			}
+		}
+	}
+	return nil
 }
 
+// handleRequest is the main entry point: proxy or serve loading page.
 func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
-	containerName := s.resolveContainerName(r)
-	if containerName == "" {
-		http.Error(w, "Could not resolve target container from Host or query param", http.StatusBadRequest)
+	// Skip internal endpoints that arrive here due to mux routing edge cases
+	if r.URL.Path == "/_health" || r.URL.Path == "/_logs" {
+		http.NotFound(w, r)
+		return
+	}
+
+	cfg := s.resolveConfig(r)
+	if cfg == nil {
+		http.Error(w, "No container configured for this host. Check config.yaml.", http.StatusNotFound)
 		return
 	}
 
 	ctx := r.Context()
-	status, err := s.manager.client.GetContainerStatus(ctx, containerName)
+	status, err := s.manager.client.GetContainerStatus(ctx, cfg.Name)
 	if err != nil {
 		if strings.Contains(err.Error(), "No such container") {
-			s.serveErrorPage(w, r, containerName, "Container not found in Docker daemon")
-			return
+			s.serveErrorPage(w, r, cfg, "Container not found in Docker daemon")
+		} else {
+			s.serveErrorPage(w, r, cfg, fmt.Sprintf("Docker error: %v", err))
 		}
-		s.serveErrorPage(w, r, containerName, fmt.Sprintf("Docker error: %v", err))
 		return
 	}
 
 	if status == "running" {
-		s.proxyRequest(w, r, containerName)
+		s.manager.RecordActivity(cfg.Name)
+		s.proxyRequest(w, r, cfg)
 		return
 	}
 
-	// If not running, trigger start asynchronously
+	// Container not running — trigger async start and serve loading page.
 	go func() {
-		bgCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		bgCtx, cancel := context.WithTimeout(context.Background(), cfg.StartTimeout+5*time.Second)
 		defer cancel()
-		_, err := s.manager.EnsureRunning(bgCtx, containerName)
-		if err != nil {
-			fmt.Printf("Error starting container %s: %v\n", containerName, err)
+		if _, err := s.manager.EnsureRunning(bgCtx, cfg); err != nil {
+			fmt.Printf("async start error for %q: %v\n", cfg.Name, err)
 		}
 	}()
 
-	// Serve the loading page
-	s.serveLoadingPage(w, r, containerName)
+	s.serveLoadingPage(w, r, cfg)
 }
 
-func (s *Server) proxyRequest(w http.ResponseWriter, r *http.Request, containerName string) {
-	ip, err := s.manager.client.GetContainerAddress(r.Context(), containerName)
-	if err != nil {
-		s.serveErrorPage(w, r, containerName, fmt.Sprintf("Networking error: %v", err))
+// handleHealth returns {"status":"<docker-status>"} for polling by the loading page.
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	cfg := s.resolveConfig(r)
+	if cfg == nil {
+		http.Error(w, "unknown container", http.StatusBadRequest)
 		return
 	}
 
-	// Default to port 80 if not specified (could be made configurable via labels)
-	targetPort := os.Getenv("TARGET_PORT")
-	if targetPort == "" {
-		targetPort = "80"
+	status, err := s.manager.client.GetContainerStatus(r.Context(), cfg.Name)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
-	targetURL, _ := url.Parse(fmt.Sprintf("http://%s:%s", ip, targetPort))
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": status})
+}
+
+// handleLogs returns {"lines":["..."]} with the last N log lines of the container.
+func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
+	cfg := s.resolveConfig(r)
+	if cfg == nil {
+		http.Error(w, "unknown container", http.StatusBadRequest)
+		return
+	}
+
+	lines, err := s.manager.client.GetContainerLogs(r.Context(), cfg.Name, s.cfg.Gateway.LogLines)
+	if err != nil {
+		// Return empty lines rather than an error — the container may be starting.
+		lines = []string{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string][]string{"lines": lines})
+}
+
+// proxyRequest forwards the HTTP request to the target container.
+func (s *Server) proxyRequest(w http.ResponseWriter, r *http.Request, cfg *ContainerConfig) {
+	ip, err := s.manager.client.GetContainerAddress(r.Context(), cfg.Name)
+	if err != nil {
+		s.serveErrorPage(w, r, cfg, fmt.Sprintf("Networking error: %v", err))
+		return
+	}
+
+	targetURL, _ := url.Parse(fmt.Sprintf("http://%s:%s", ip, cfg.TargetPort))
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
-	
-	// Update the headers to allow for SSL redirection and proper host passing
+
 	r.URL.Host = targetURL.Host
 	r.URL.Scheme = targetURL.Scheme
 	r.Header.Set("X-Forwarded-Host", r.Header.Get("Host"))
@@ -135,56 +177,51 @@ func (s *Server) proxyRequest(w http.ResponseWriter, r *http.Request, containerN
 	proxy.ServeHTTP(w, r)
 }
 
-func (s *Server) serveLoadingPage(w http.ResponseWriter, r *http.Request, containerName string) {
-	data := struct {
-		ContainerName string
-		RequestID     string
-		RequestPath   string
-	}{
-		ContainerName: containerName,
-		RequestID:     fmt.Sprintf("req-%x", time.Now().UnixNano()%0xFFFFFF),
-		RequestPath:   r.URL.Path,
-	}
+// ─── Template data structs ────────────────────────────────────────────────────
 
-	w.Header().Set("Content-Type", "text/html")
+type loadingData struct {
+	ContainerName string
+	RequestID     string
+	RequestPath   string
+	RedirectPath  string
+	StartTimeout  string // human-readable for display
+}
+
+type errorData struct {
+	ContainerName string
+	Error         string
+	RequestID     string
+	RequestPath   string
+}
+
+func requestID(prefix string) string {
+	return fmt.Sprintf("%s-%x", prefix, time.Now().UnixNano()%0xFFFFFF)
+}
+
+func (s *Server) serveLoadingPage(w http.ResponseWriter, r *http.Request, cfg *ContainerConfig) {
+	data := loadingData{
+		ContainerName: cfg.Name,
+		RequestID:     requestID("req"),
+		RequestPath:   r.URL.Path,
+		RedirectPath:  cfg.RedirectPath,
+		StartTimeout:  cfg.StartTimeout.String(),
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.tmpl.ExecuteTemplate(w, "loading.html", data); err != nil {
-		fmt.Printf("Template execution error: %v\n", err)
+		fmt.Printf("template error (loading): %v\n", err)
 	}
 }
 
-func (s *Server) serveErrorPage(w http.ResponseWriter, r *http.Request, containerName string, errMsg string) {
-	data := struct {
-		ContainerName string
-		Error         string
-		RequestID     string
-		RequestPath   string
-	}{
-		ContainerName: containerName,
+func (s *Server) serveErrorPage(w http.ResponseWriter, r *http.Request, cfg *ContainerConfig, errMsg string) {
+	data := errorData{
+		ContainerName: cfg.Name,
 		Error:         errMsg,
-		RequestID:     fmt.Sprintf("err-%x", time.Now().UnixNano()%0xFFFFFF),
+		RequestID:     requestID("err"),
 		RequestPath:   r.URL.Path,
 	}
-
-	w.Header().Set("Content-Type", "text/html")
-	w.WriteHeader(http.StatusInternalServerError)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusBadGateway)
 	if err := s.tmpl.ExecuteTemplate(w, "error.html", data); err != nil {
-		fmt.Printf("Error template execution error: %v\n", err)
+		fmt.Printf("template error (error): %v\n", err)
 	}
-}
-
-func (s *Server) handleHealthCheck(w http.ResponseWriter, r *http.Request) {
-	containerName := s.resolveContainerName(r)
-	if containerName == "" {
-		http.Error(w, "Missing container identifier", http.StatusBadRequest)
-		return
-	}
-
-	status, err := s.manager.client.GetContainerStatus(r.Context(), containerName)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte(fmt.Sprintf(`{"status": "%s"}`, status)))
 }

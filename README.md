@@ -1,134 +1,184 @@
 # Docker Awakening Gateway 🐳💤→⚡
 
-An ultra-lightweight reverse proxy that **wakes up stopped Docker containers on-demand**. When a request arrives for a sleeping container, the gateway shows a sleek loading page, starts the container, and transparently proxies once it's ready.
+An ultra-lightweight reverse proxy that **wakes up stopped Docker containers on-demand**. When a request arrives for a sleeping container, the gateway shows a sleek loading page with live container logs, starts the container, and transparently proxies once it's ready. Idle containers can be auto-stopped to save resources.
 
 Built as a single static Go binary — ideal for home labs, edge devices, and resource-constrained environments.
 
 ## Features
 
-- **On-demand container startup** — containers sleep until needed, saving resources
-- **Transparent reverse proxy** — once the container is running, requests flow through directly
-- **Minimal loading page** — dark-themed, responsive UI with CSS animations (no heavy JS frameworks)
+- **On-demand container startup** — containers sleep until needed
+- **Dual timeout system** — independent `start_timeout` and `idle_timeout` per container
+- **Live log box** — loading page polls container logs every 3s in real time
+- **Configurable redirect path** — redirect to `/dashboard` or any path after startup
+- **Per-container configuration** — one gateway manages N containers via `config.yaml`
+- **Transparent reverse proxy** — once running, requests flow through with zero overhead
 - **Concurrency-safe** — multiple simultaneous requests won't trigger duplicate starts
-- **Ultra-lightweight** — static Go binary, distroless final image (< 20 MB)
-- **Zero external dependencies at runtime** — HTML/CSS templates embedded in the binary via `go:embed`
+- **Ultra-lightweight** — static Go binary, distroless final image (~17 MB)
 
 ## Quick Start
 
-### With Docker Compose
-
 ```bash
-# Clone the repo
 git clone https://github.com/your-user/docker-gateway.git
 cd docker-gateway
 
-# Build and start the gateway + a test whoami container
+# Start the gateway + test containers
 docker compose up -d --build
 
-# The whoami container starts stopped. Visit the gateway to wake it:
-curl http://localhost:8080?container=whoami-test
-
-# You'll see the loading page. After a few seconds, the container is up and proxied.
+# Test the slow-app awakening (add entry to /etc/hosts first — see below)
+curl http://slow-app.localhost:8080/
 ```
 
-### Standalone Docker
-
-```bash
-# Build the image
-docker build -t docker-gateway .
-
-# Run with Docker socket mounted
-docker run -d \
-  -p 8080:8080 \
-  -v /var/run/docker.sock:/var/run/docker.sock:ro \
-  -e PORT=8080 \
-  -e TARGET_PORT=80 \
-  docker-gateway
+Add to `/etc/hosts` for local testing:
+```
+127.0.0.1  slow-app.localhost
+127.0.0.1  fail-app.localhost
 ```
 
 ## Configuration
 
-| Variable | Default | Description |
-|---|---|---|
-| `PORT` | `8080` | Port the gateway listens on |
-| `TARGET_PORT` | `80` | Port to proxy to on the target container |
+The gateway is configured via a **YAML file** mounted at `/etc/gateway/config.yaml`. The path can be overridden with the `CONFIG_PATH` environment variable.
+
+### `config.yaml` reference
+
+```yaml
+gateway:
+  port: "8080"        # port the gateway listens on (default: 8080)
+  log_lines: 30       # container log lines shown in the loading page UI (default: 30)
+
+containers:
+  - name: "my-app"               # Docker container name (required)
+    host: "my-app.example.com"   # Host header to match incoming requests (required)
+    target_port: "80"            # port to proxy to on the container (default: 80)
+    start_timeout: "60s"         # max wait for container to start; shows error page on expiry (default: 60s)
+    idle_timeout: "30m"          # auto-stop after this much inactivity; 0 = never auto-stop (default: 0)
+    redirect_path: "/"           # URL path the browser is redirected to once container is up (default: /)
+```
+
+### Options reference
+
+| Field | Scope | Default | Description |
+|---|---|---|---|
+| `gateway.port` | Global | `8080` | Listening port |
+| `gateway.log_lines` | Global | `30` | Log lines shown in the UI |
+| `name` | Container | — | Docker container name |
+| `host` | Container | — | Incoming `Host` header to match |
+| `target_port` | Container | `80` | Port on the container to proxy to |
+| `start_timeout` | Container | `60s` | Max time to wait for startup before showing the error page |
+| `idle_timeout` | Container | `0` | Inactivity period before auto-stopping the container (`0` = disabled) |
+| `redirect_path` | Container | `/` | Path the browser navigates to once the container is running |
+
+### Timeout behaviour
+
+```
+start_timeout  — from the moment the gateway triggers docker start
+    │
+    └─► container enters "running" → redirect to redirect_path
+    └─► timeout exceeded           → error page shown
+
+idle_timeout   — checked every 60 seconds (background goroutine)
+    │
+    └─► last request > idle_timeout ago AND container running → docker stop
+    └─► next request arrives → back to start_timeout path
+```
+
+## Docker Compose
+
+```yaml
+services:
+  gateway:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./config.yaml:/etc/gateway/config.yaml:ro
+    environment:
+      - CONFIG_PATH=/etc/gateway/config.yaml
+```
+
+> [!NOTE]
+> The Docker socket is mounted **read-only** — the gateway only needs `ContainerInspect`, `ContainerStart`, `ContainerStop`, and `ContainerLogs`.
 
 ## How It Works
 
 ```
- Client Request
+ Incoming Request (Host: my-app.example.com)
        │
        ▼
- ┌─────────────┐
- │   Gateway    │──── Container running? ──── YES ──► Reverse Proxy
- │   :8080      │                                      to container
- └─────────────┘
-       │ NO
-       ▼
- ┌─────────────┐     ┌──────────────┐
- │ Loading Page │────►│ Start via    │
- │ (polling)    │     │ Docker API   │
- └─────────────┘     └──────────────┘
-       │                    │
-       │  ◄── running ─────┘
-       ▼
-  Auto-redirect
-  to service
+ resolve Host → ContainerConfig
+       │
+       ├─ container running? ──YES──► RecordActivity → Reverse Proxy
+       │
+       └─ container stopped?
+              │
+              ├──► serve loading page (log box + progress bar)
+              └──► async: docker start → poll until running
+                                               │
+                                         browser polls /_health
+                                               │
+                                         status = running
+                                               │
+                                         redirect to redirect_path
 ```
 
-### Container Resolution
+### Internal endpoints
 
-The gateway resolves which container to wake using:
+| Endpoint | Description |
+|---|---|
+| `/_health?container=NAME` | Returns `{"status":"running"}` — polled by the loading page |
+| `/_logs?container=NAME` | Returns `{"lines":["..."]}` — polled every 3s by the log box |
 
-1. **Query parameter**: `?container=my-app` (useful for testing)
-2. **Host subdomain**: `my-app.localhost:8080` → wakes container `my-app`
+## Test Scenarios (docker compose)
+
+| Container | Scenario to test | Config |
+|---|---|---|
+| `slow-app` | Normal boot delay (15s), log box, auto-redirect | `start_timeout: 90s`, `idle_timeout: 5m` |
+| `fail-app` | Container always crashes → error page | `start_timeout: 8s` |
+
+Trigger each:
+```bash
+# 1. Normal awakening — visit loading page, watch logs appear, auto-redirect after ~15s
+curl -I http://slow-app.localhost:8080/
+
+# 2. Force idle-stop test — set idle_timeout to 1m in config.yaml, wait, re-request
+# 3. Error/timeout page — request fail-app, wait 8s
+curl -I http://fail-app.localhost:8080/
+```
+
+## Build
+
+```bash
+# Local build
+go build -o docker-gateway .
+
+# Docker image (uses vendored deps — no network needed during build)
+docker build -t docker-gateway .
+```
 
 ## Architecture
 
 ```
 docker-gateway/
-├── main.go                    # Entry point
+├── main.go                    # Entry point: load config → start idle watcher → serve
+├── config.yaml                # Per-container configuration (mount into container)
 ├── gateway/
-│   ├── docker.go              # Docker client wrapper (inspect, start)
-│   ├── manager.go             # Concurrency-safe container manager
-│   ├── server.go              # HTTP server, proxy, and template rendering
+│   ├── config.go              # YAML config structs + loader + host index builder
+│   ├── docker.go              # Docker client: inspect, start, stop, logs
+│   ├── manager.go             # Concurrency-safe start + idle auto-stop watcher
+│   ├── server.go              # HTTP server: routing, /_health, /_logs, proxy
 │   └── templates/
-│       ├── loading.html       # Awakening state page
+│       ├── loading.html       # Awakening page: log box + progress + auto-redirect
 │       └── error.html         # Failure state page
-├── Dockerfile                 # Multi-stage build (golang → distroless)
-├── docker-compose.yml         # Dev/test environment
-└── mokups/                    # UI mockups from Stitch
+├── Dockerfile                 # Multi-stage: golang:1.24 → distroless/static
+└── docker-compose.yml         # Dev/test environment
 ```
 
-## Security Notes
+## Security
 
-- The Docker socket is mounted **read-only** (`:ro`). The gateway only needs `ContainerInspect` and `ContainerStart`.
-- The final image uses `gcr.io/distroless/static` — no shell, no package manager.
-- Consider limiting which containers the gateway can manage via labels or a whitelist (roadmap feature).
-
-## Development
-
-```bash
-# Prerequisites: Go 1.24+, Docker
-
-# Run locally (requires Docker socket access)
-go run .
-
-# Build binary
-go build -o docker-gateway .
-
-# Build Docker image
-docker build -t docker-gateway .
-```
-
-## Roadmap
-
-- [ ] Container whitelist / label-based filtering
-- [ ] Per-container port configuration via Docker labels
-- [ ] Configurable start timeout
-- [ ] Auto-stop idle containers (inactivity timer)
-- [ ] Health check endpoint for the gateway itself
-- [ ] Light mode support in the loading page
+- Docker socket mounted **read-only** (`:ro`)
+- Log lines rendered via `textContent` (no HTML injection)
+- Final image: `gcr.io/distroless/static` — no shell, no package manager
+- No credentials, secrets, or sensitive paths exposed via `/_logs` or `/_health`
 
 ## License
 
