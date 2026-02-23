@@ -3,10 +3,10 @@ package main
 import (
 	"context"
 	"log"
-
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"docker-gateway/gateway"
 )
@@ -34,6 +34,10 @@ func main() {
 		log.Fatalf("Failed to initialize server: %v", err)
 	}
 
+	// Initialize Auto-Discovery
+	discoveryManager := gateway.NewDiscoveryManager(dockerClient, cfg, server.ReloadConfig)
+	discoveryManager.Start(context.Background(), 15*time.Second)
+
 	// Start idle-watcher goroutine with a callback to get the latest config
 	manager.StartIdleWatcher(context.Background(), func() []gateway.ContainerConfig {
 		return server.GetConfig().Containers
@@ -44,14 +48,14 @@ func main() {
 	signal.Notify(sigChan, syscall.SIGHUP)
 	go func() {
 		for range sigChan {
-			log.Println("Received SIGHUP, reloading configuration...")
+			log.Println("Received SIGHUP, reloading static configuration...")
 			newCfg, err := gateway.LoadConfig()
 			if err != nil {
 				log.Printf("Hot-reload failed: %v", err)
 				continue
 			}
-			server.ReloadConfig(newCfg)
-			log.Println("Configuration reloaded successfully")
+			discoveryManager.UpdateStaticConfig(newCfg)
+			log.Println("Static configuration reloaded and discovery pass triggered successfully")
 		}
 	}()
 

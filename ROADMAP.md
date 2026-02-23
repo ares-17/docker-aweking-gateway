@@ -10,11 +10,12 @@
 - [x] **Host-header routing** — O(1) lookup maps `Host` header → container config; supports N containers on one gateway
 - [x] **Query-param fallback** — `?container=NAME` for testing without DNS
 
-### Configuration
+### Configuration & Operations
 - [x] **YAML config file** (`config.yaml`) — per-container settings, mounted via volume
 - [x] **`CONFIG_PATH` env override** — point to any path for the config file
-- [x] **Config validation at startup** — fail fast with clear messages if required fields are missing
-- [x] **Config hot-reload** — reload `config.yaml` on SIGHUP without restarting the gateway
+- [x] **Config validation at startup** — gateway fails-fast if `config.yaml` is missing required fields (`name`, `host`, `target_port`) or contains duplicate definitions
+- [x] **Config hot-reload** — `docker kill -s HUP docker-gateway` reloads `config.yaml` at runtime without dropping connections or altering gateway state
+- [x] **Label-based auto-discovery** — gateway reads Docker labels (`gateway.host`, `gateway.port`, etc.) to automatically discover containers without static config file entries
 - [x] **Per-container `start_timeout`** — max time to wait for docker start + TCP probe
 - [x] **Per-container `idle_timeout`** — auto-stop containers idle longer than threshold (0 = disabled)
 - [x] **Per-container `target_port`** — proxy to any port on the container
@@ -65,7 +66,6 @@
 
 ## 📅 Medium-term
 
-- [ ] **Label-based auto-discovery** — read Docker labels (`gateway.host`, `gateway.port`, etc.) instead of a static config file
 - [ ] **Customisable loading page** — per-container colour/logo/message overrides
 - [ ] **HTTP health probe** — optionally call a container's `/health` endpoint instead of TCP to confirm readiness
 

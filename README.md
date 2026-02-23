@@ -10,7 +10,7 @@ Built as a single static Go binary — ideal for home labs, edge devices, and re
 - **Dual timeout system** — independent `start_timeout` and `idle_timeout` per container
 - **Live log box** — loading page polls container logs every 3s in real time
 - **Configurable redirect path** — redirect to `/dashboard` or any path after startup
-- **Per-container configuration** — one gateway manages N containers via `config.yaml`
+- **Label-based auto-discovery** — no static config needed, just add `dag.host` labels
 - **Transparent reverse proxy** — once running, requests flow through with zero overhead
 - **Concurrency-safe** — multiple simultaneous requests won't trigger duplicate starts
 - **Ultra-lightweight** — static Go binary, distroless final image (~17 MB)
@@ -36,38 +36,24 @@ Add to `/etc/hosts` for local testing:
 
 ## Configuration
 
-The gateway is configured via a **YAML file** mounted at `/etc/gateway/config.yaml`. The path can be overridden with the `CONFIG_PATH` environment variable.
+The Docker Awakening Gateway provides two distinct ways to manage the containers it wakes up and proxies traffic to:
 
-### `config.yaml` reference
+1.  **[Label-based Auto-Discovery](docs/configuration.md#1-label-based-auto-discovery-recommended)**: Configure containers dynamically via Docker labels directly in your `docker-compose.yml`.
+To enable auto-discovery for a container, simply add the following labels:
+*   `dag.enabled=true` (Required to enable discovery)
+*   `dag.host=my-app.example.com` (Required to match incoming requests)
 
-```yaml
-gateway:
-  port: "8080"        # port the gateway listens on (default: 8080)
-  log_lines: 30       # container log lines shown in the loading page UI (default: 30)
+Optional labels (which map exactly to the `config.yaml` fields):
+*   `dag.target_port` (default: `80`)
+*   `dag.start_timeout` (default: `60s`)
+*   `dag.idle_timeout` (default: `0`)
+*   `dag.network` (default: `""`)
+*   `dag.redirect_path` (default: `/`)
+*   `dag.icon` (default: `docker`)
 
-containers:
-  - name: "my-app"               # Docker container name (required)
-    host: "my-app.example.com"   # Host header to match incoming requests (required)
-    target_port: "80"            # Port the container listens on (e.g., `80`, `3000`) (default: 80)
-    start_timeout: "60s"         # Max time to wait for container to start (Docker) + TCP probe. Gateway will error if timeout reached (default: 60s)
-    idle_timeout: "30m"          # Auto-stop container after X time of no requests (e.g., `10m`). `0` disables auto-stop (default: 0)
-    network: ""                  # Instructs gateway to resolve container IP from this specific Docker network name. Useful if container is on multiple networks.
-    redirect_path: "/"           # Absolute path to redirect the browser to once target is running (default: /)
-    icon: "docker"               # [Simple Icons](https://simpleicons.org/) slug for the `/_status` dashboard (e.g. `nginx`, `redis`) (default: `docker`)
-```
+2.  **[Static Configuration (`config.yaml`)](docs/configuration.md#2-static-configuration-configyaml)**: Manage a centralized routing file for all containers and define global gateway settings.
 
-### Options reference
-
-| Field | Scope | Default | Description |
-|---|---|---|---|
-| `gateway.port` | Global | `8080` | Listening port |
-| `gateway.log_lines` | Global | `30` | Log lines shown in the UI |
-| `name` | Container | — | Docker container name |
-| `host` | Container | — | Incoming `Host` header to match |
-| `target_port` | Container | `80` | Port on the container to proxy to |
-| `start_timeout` | Container | `60s` | Max time to wait for startup before showing the error page |
-| `idle_timeout` | Container | `0` | Inactivity period before auto-stopping the container (`0` = disabled) |
-| `redirect_path` | Container | `/` | Path the browser navigates to once the container is running |
+**[📚 Read the exhaustive Configuration Guide](docs/configuration.md)** for detailed instructions, available parameters, and compose examples.
 
 ### Timeout behaviour
 

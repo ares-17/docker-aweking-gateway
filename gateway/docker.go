@@ -5,11 +5,13 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"strings"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
 	dockernetwork "github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 )
@@ -62,6 +64,81 @@ func (d *DockerClient) InspectContainer(ctx context.Context, containerName strin
 		ci.FinishedAt = t
 	}
 	return ci, nil
+}
+
+// DiscoverLabeledContainers lists all containers with the `gateway.enabled=true` label
+// and parses their labels into ContainerConfig structs.
+func (d *DockerClient) DiscoverLabeledContainers(ctx context.Context) ([]ContainerConfig, error) {
+	args := filters.NewArgs()
+	args.Add("label", "dag.enabled=true")
+
+	opts := container.ListOptions{
+		All:     true,
+		Filters: args,
+	}
+
+	containers, err := d.cli.ContainerList(ctx, opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list labeled containers: %w", err)
+	}
+
+	var configs []ContainerConfig
+	for _, c := range containers {
+		if len(c.Names) == 0 {
+			continue
+		}
+		
+		cfg := ContainerConfig{
+			Name: strings.TrimPrefix(c.Names[0], "/"),
+		}
+
+		if host, ok := c.Labels["dag.host"]; ok && host != "" {
+			cfg.Host = host
+		} else {
+			log.Printf("discovery: container %q has dag.enabled=true but missing required dag.host", cfg.Name)
+			continue
+		}
+
+		cfg.TargetPort = "80"
+		if port, ok := c.Labels["dag.target_port"]; ok && port != "" {
+			cfg.TargetPort = port
+		}
+
+		cfg.StartTimeout = 60 * time.Second
+		if val, ok := c.Labels["dag.start_timeout"]; ok && val != "" {
+			if parseDur, err := time.ParseDuration(val); err == nil {
+				cfg.StartTimeout = parseDur
+			} else {
+				log.Printf("discovery: invalid start_timeout %q for %q: %v", val, cfg.Name, err)
+			}
+		}
+
+		if val, ok := c.Labels["dag.idle_timeout"]; ok && val != "" {
+			if parseDur, err := time.ParseDuration(val); err == nil {
+				cfg.IdleTimeout = parseDur
+			} else {
+				log.Printf("discovery: invalid idle_timeout %q for %q: %v", val, cfg.Name, err)
+			}
+		}
+
+		if val, ok := c.Labels["dag.network"]; ok {
+			cfg.Network = val
+		}
+
+		cfg.RedirectPath = "/"
+		if val, ok := c.Labels["dag.redirect_path"]; ok && val != "" {
+			cfg.RedirectPath = val
+		}
+
+		cfg.Icon = "docker"
+		if val, ok := c.Labels["dag.icon"]; ok && val != "" {
+			cfg.Icon = val
+		}
+
+		configs = append(configs, cfg)
+	}
+
+	return configs, nil
 }
 
 // GetContainerAddress returns the IP address of the container.

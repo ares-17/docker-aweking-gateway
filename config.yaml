@@ -8,18 +8,7 @@ gateway:
   log_lines: 30
 
 containers:
-  # ------------------------------------------------------------------
-  # slow-app: nginx with a 15-second boot delay.
-  # Tests: loading page, log box content, progress bar, auto-redirect.
-  # ------------------------------------------------------------------
-  - name: "slow-app"
-    host: "slow-app.localhost:8080"
-    icon: "nginx"
-    target_port: "80"
-    network: ""         # leave empty to use first available network
-    start_timeout: "120s"
-    idle_timeout: "5m"
-    redirect_path: "/"
+
 
   # ------------------------------------------------------------------
   # fail-app: always exits immediately with code 1.

@@ -24,6 +24,14 @@ services:
   slow-app:
     image: nginx:alpine
     container_name: slow-app
+    labels:
+      - "dag.enabled=true"
+      - "dag.host=slow-app.localhost:8080"
+      - "dag.icon=nginx"
+      - "dag.target_port=80"
+      - "dag.start_timeout=120s"
+      - "dag.idle_timeout=5m"
+      - "dag.redirect_path=/"
     # Override entrypoint to add boot delay before nginx starts
     entrypoint: ["/bin/sh", "-c", "echo 'slow-app: boot sequence started'; sleep 15; echo 'slow-app: boot complete, starting nginx'; nginx -g 'daemon off;'"]
     # NOTE: do NOT add 'restart' — we want the container startable by the gateway
