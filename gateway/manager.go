@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"sync"
 	"time"
 )
@@ -100,86 +101,84 @@ func (m *ContainerManager) GetLastSeen(containerName string) (time.Time, bool) {
 // Uses cfg.StartTimeout as the total budget for the entire sequence.
 func (m *ContainerManager) EnsureRunning(ctx context.Context, cfg *ContainerConfig) error {
 	// Check current Docker status
+	mu := m.getLock(cfg.Name)
+	mu.Lock()
+	defer mu.Unlock()
+
+	// Check if already running
 	status, err := m.client.GetContainerStatus(ctx, cfg.Name)
-	if err != nil {
-		m.setStartState(cfg.Name, statusFailed, fmt.Sprintf("inspect error: %v", err))
-		return err
-	}
-	if status == "running" {
-		// Already running — probe TCP to ensure the app is actually listening
-		return m.probeTCPReady(ctx, cfg)
+	if err == nil && status == "running" {
+		m.RecordActivity(cfg.Name)
+		return nil
 	}
 
-	// Acquire per-container lock to prevent parallel start attempts.
-	lock := m.getLock(cfg.Name)
-	lock.Lock()
-	defer lock.Unlock()
-
-	// Double-check after acquiring lock.
-	status, err = m.client.GetContainerStatus(ctx, cfg.Name)
-	if err != nil {
-		m.setStartState(cfg.Name, statusFailed, fmt.Sprintf("inspect error: %v", err))
-		return err
-	}
-	if status == "running" {
-		return m.probeTCPReady(ctx, cfg)
-	}
-
-	// Start the container.
+	start := time.Now()
 	m.setStartState(cfg.Name, statusStarting, "")
+
+	// Ask Docker to start it
 	if err := m.client.StartContainer(ctx, cfg.Name); err != nil {
-		msg := fmt.Sprintf("docker start failed: %v", err)
-		m.setStartState(cfg.Name, statusFailed, msg)
-		return fmt.Errorf("%s", msg)
+		m.setStartState(cfg.Name, statusFailed, "docker start failed")
+		RecordStart(cfg.Name, false, 0)
+		return fmt.Errorf("failed to start container %q: %w", cfg.Name, err)
 	}
 
-	// Poll until Docker reports "running" or start_timeout elapses.
-	timeoutCtx, cancel := context.WithTimeout(ctx, cfg.StartTimeout)
-	defer cancel()
+	// Poll until TCP is ready or context expires
+	ip, err := m.client.GetContainerAddress(ctx, cfg.Name, cfg.Network)
+	if err != nil {
+		m.setStartState(cfg.Name, statusFailed, "cannot find container IP")
+		RecordStart(cfg.Name, false, 0)
+		return fmt.Errorf("failed to get IP for %q: %w", cfg.Name, err)
+	}
 
+	targetAddr := fmt.Sprintf("%s:%s", ip, cfg.TargetPort)
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case <-timeoutCtx.Done():
-			msg := fmt.Sprintf("start timeout after %s", cfg.StartTimeout)
-			m.setStartState(cfg.Name, statusFailed, msg)
-			return fmt.Errorf("%s", msg)
+		case <-ctx.Done():
+			m.setStartState(cfg.Name, statusFailed, "startup timeout exceeded")
+			RecordStart(cfg.Name, false, 0)
+			return fmt.Errorf("timeout waiting for %q (%s) to be reachable", cfg.Name, targetAddr)
 		case <-ticker.C:
-			status, err := m.client.GetContainerStatus(ctx, cfg.Name)
-			if err != nil {
-				continue
-			}
-			if status == "running" {
-				// TCP probe with remaining budget
-				return m.probeTCPReady(timeoutCtx, cfg)
-			}
+			// Ensure container didn't crash during boot
+			status, _ := m.client.GetContainerStatus(ctx, cfg.Name)
 			if status == "exited" || status == "dead" {
-				msg := fmt.Sprintf("container exited unexpectedly (status=%s)", status)
-				m.setStartState(cfg.Name, statusFailed, msg)
-				return fmt.Errorf("%s", msg)
+				m.setStartState(cfg.Name, statusFailed, "container crashed on boot (see docker logs)")
+				RecordStart(cfg.Name, false, 0)
+				return fmt.Errorf("container %q crashed during boot", cfg.Name)
+			}
+
+			// TCP probe
+			conn, err := net.DialTimeout("tcp", targetAddr, 500*time.Millisecond)
+			if err == nil {
+				conn.Close()
+				m.RecordActivity(cfg.Name)
+				m.setStartState(cfg.Name, statusRunning, "")
+				RecordStart(cfg.Name, true, time.Since(start).Seconds())
+				return nil
 			}
 		}
 	}
 }
 
 // probeTCPReady probes ip:port until the app responds or ctx expires.
-func (m *ContainerManager) probeTCPReady(ctx context.Context, cfg *ContainerConfig) error {
-	ip, err := m.client.GetContainerAddress(ctx, cfg.Name, cfg.Network)
-	if err != nil {
-		msg := fmt.Sprintf("cannot resolve container address: %v", err)
-		m.setStartState(cfg.Name, statusFailed, msg)
-		return fmt.Errorf("%s", msg)
-	}
-	if err := m.client.ProbeTCP(ctx, ip, cfg.TargetPort); err != nil {
-		msg := fmt.Sprintf("app not responding on port %s: %v", cfg.TargetPort, err)
-		m.setStartState(cfg.Name, statusFailed, msg)
-		return fmt.Errorf("%s", msg)
-	}
-	m.setStartState(cfg.Name, statusRunning, "")
-	return nil
-}
+// This function is no longer used after the EnsureRunning refactor.
+// func (m *ContainerManager) probeTCPReady(ctx context.Context, cfg *ContainerConfig) error {
+// 	ip, err := m.client.GetContainerAddress(ctx, cfg.Name, cfg.Network)
+// 	if err != nil {
+// 		msg := fmt.Sprintf("cannot resolve container address: %v", err)
+// 		m.setStartState(cfg.Name, statusFailed, msg)
+// 		return fmt.Errorf("%s", msg)
+// 	}
+// 	if err := m.client.ProbeTCP(ctx, ip, cfg.TargetPort); err != nil {
+// 		msg := fmt.Sprintf("app not responding on port %s: %v", cfg.TargetPort, err)
+// 		m.setStartState(cfg.Name, statusFailed, msg)
+// 		return fmt.Errorf("%s", msg)
+// 	}
+// 	m.setStartState(cfg.Name, statusRunning, "")
+// 	return nil
+// }
 
 // StartIdleWatcher begins a background routine that periodically checks
 // container activity. If a container's idle_timeout is reached, it shuts it down.
@@ -215,21 +214,20 @@ func (m *ContainerManager) checkIdle(ctx context.Context, cfgs []ContainerConfig
 		if !seen {
 			continue
 		}
-		if now.Sub(last) < cfg.IdleTimeout {
+		idleDuration := now.Sub(last)
+		if idleDuration < cfg.IdleTimeout {
 			continue
 		}
 		status, err := m.client.GetContainerStatus(ctx, cfg.Name)
 		if err != nil || status != "running" {
 			continue
 		}
-		log.Printf("idle-watcher: stopping %q (idle for %s)", cfg.Name, now.Sub(last).Round(time.Second))
+		log.Printf("checkIdle: Stopping %q (idle for %v > %v)", cfg.Name, idleDuration, cfg.IdleTimeout)
 		if err := m.client.StopContainer(ctx, cfg.Name); err != nil {
-			log.Printf("idle-watcher: failed to stop %q: %v", cfg.Name, err)
+			log.Printf("checkIdle: Failed to stop %q: %v", cfg.Name, err)
 		} else {
-			// Reset start state so next request triggers a fresh start
-			m.mu.Lock()
-			delete(m.startStates, cfg.Name)
-			m.mu.Unlock()
+			RecordIdleStop(cfg.Name)
+			m.setStartState(cfg.Name, "unknown", "")
 		}
 	}
 }

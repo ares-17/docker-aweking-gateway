@@ -132,6 +132,7 @@ services:
 | `/_status` | Admin dashboard showing all managed containers with live status |
 | `/_status/api` | JSON snapshot of all containers — polled every 5s by the dashboard |
 | `/_status/wake?container=NAME` | POST — triggers container start from the dashboard |
+| `/_metrics` | Prometheus metrics endpoint. **[→ Read the Monitoring Guide](docs/prometheus.md)** |
 
 ## Test Scenarios (docker compose)
 

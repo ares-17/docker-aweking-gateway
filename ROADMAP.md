@@ -55,17 +55,17 @@
 - [x] **`docker-compose.yml`** — gateway + `slow-app` (15s boot) + `fail-app` (always crashes) for testing
 - [x] **`ROADMAP.md`** — this file
 
-### Admin
+### Admin & Observability
 - [x] **`/_status` dashboard page** — HTML admin dashboard showing all managed containers with live status, heartbeat bars, uptime, last request, idle timeout, and dark/light mode toggle
 - [x] **`/_status/api` JSON endpoint** — returns a snapshot of all containers (status, image, timestamps, config) polled every 5s by the dashboard
 - [x] **`/_status/wake` action** — POST endpoint to trigger container start from the dashboard UI
+- [x] **Prometheus `/metrics` endpoint** — per-container counters: requests proxied, start events, idle stops, duration histograms
 
 ---
 
 ## 📅 Medium-term
 
 - [ ] **Label-based auto-discovery** — read Docker labels (`gateway.host`, `gateway.port`, etc.) instead of a static config file
-- [ ] **Prometheus `/metrics` endpoint** — per-container counters: requests proxied, start events, idle stops, duration histograms
 - [ ] **Customisable loading page** — per-container colour/logo/message overrides
 - [ ] **HTTP health probe** — optionally call a container's `/health` endpoint instead of TCP to confirm readiness
 

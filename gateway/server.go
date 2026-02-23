@@ -11,9 +11,12 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 const gatewayVersion = "0.3.0"
@@ -53,6 +56,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/_status", s.handleStatusPage)
 	mux.HandleFunc("/_status/api", s.handleStatusAPI)
 	mux.HandleFunc("/_status/wake", s.handleStatusWake)
+	mux.Handle("/_metrics", promhttp.Handler())
 	mux.HandleFunc("/", s.handleRequest)
 
 	srv := &http.Server{
@@ -111,34 +115,54 @@ func (s *Server) resolveConfig(r *http.Request) *ContainerConfig {
 	return nil
 }
 
+// metricsResponseWriter wraps http.ResponseWriter to capture the HTTP status code.
+type metricsResponseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (m *metricsResponseWriter) WriteHeader(statusCode int) {
+	m.statusCode = statusCode
+	m.ResponseWriter.WriteHeader(statusCode)
+}
+
 // ─── Main handler ─────────────────────────────────────────────────────────────
 
 func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path == "/_health" || r.URL.Path == "/_logs" || strings.HasPrefix(r.URL.Path, "/_status") {
+	if r.URL.Path == "/_health" || r.URL.Path == "/_logs" || strings.HasPrefix(r.URL.Path, "/_status") || r.URL.Path == "/_metrics" {
 		http.NotFound(w, r)
 		return
 	}
 
 	cfg := s.resolveConfig(r)
 	if cfg == nil {
-		http.Error(w, "No container configured for this host. Check config.yaml.", http.StatusNotFound)
+		http.NotFound(w, r)
 		return
 	}
+
+	start := time.Now()
+	mw := &metricsResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+
+	// Defer recording the HTTP request metric
+	defer func() {
+		duration := time.Since(start).Seconds()
+		RecordRequest(cfg.Name, strconv.Itoa(mw.statusCode), duration)
+	}()
 
 	ctx := r.Context()
 	status, err := s.manager.client.GetContainerStatus(ctx, cfg.Name)
 	if err != nil {
 		if strings.Contains(err.Error(), "No such container") {
-			s.serveErrorPage(w, r, cfg, "Container not found in Docker daemon")
+			s.serveErrorPage(mw, r, cfg, "Container not found in Docker daemon")
 		} else {
-			s.serveErrorPage(w, r, cfg, fmt.Sprintf("Docker error: %v", err))
+			s.serveErrorPage(mw, r, cfg, fmt.Sprintf("Docker error: %v", err))
 		}
 		return
 	}
 
 	if status == "running" {
 		s.manager.RecordActivity(cfg.Name)
-		s.proxyRequest(w, r, cfg)
+		s.proxyRequest(mw, r, cfg)
 		return
 	}
 
@@ -152,7 +176,7 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	s.serveLoadingPage(w, r, cfg)
+	s.serveLoadingPage(mw, r, cfg)
 }
 
 // ─── Internal endpoints ───────────────────────────────────────────────────────
