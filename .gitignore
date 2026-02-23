@@ -27,3 +27,5 @@ vendor/
 .agent/
 .agents/
 skills-lock.json
+claude.md
+GEMINI.md
