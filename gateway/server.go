@@ -6,10 +6,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -18,10 +21,11 @@ var templatesFS embed.FS
 
 // Server handles HTTP traffic for the gateway.
 type Server struct {
-	manager   *ContainerManager
-	cfg       *GatewayConfig
-	hostIndex map[string]*ContainerConfig // host → config, O(1) lookup
-	tmpl      *template.Template
+	manager     *ContainerManager
+	cfg         *GatewayConfig
+	hostIndex   map[string]*ContainerConfig
+	tmpl        *template.Template
+	rateLimiter *rateLimiter
 }
 
 func NewServer(manager *ContainerManager, cfg *GatewayConfig) (*Server, error) {
@@ -31,10 +35,11 @@ func NewServer(manager *ContainerManager, cfg *GatewayConfig) (*Server, error) {
 	}
 
 	return &Server{
-		manager:   manager,
-		cfg:       cfg,
-		hostIndex: BuildHostIndex(cfg),
-		tmpl:      tmpl,
+		manager:     manager,
+		cfg:         cfg,
+		hostIndex:   BuildHostIndex(cfg),
+		tmpl:        tmpl,
+		rateLimiter: newRateLimiter(1 * time.Second),
 	}, nil
 }
 
@@ -55,20 +60,21 @@ func (s *Server) Start() error {
 	return srv.ListenAndServe()
 }
 
+// ─── Request routing ──────────────────────────────────────────────────────────
+
 // resolveConfig maps an incoming request to its ContainerConfig by Host header.
 func (s *Server) resolveConfig(r *http.Request) *ContainerConfig {
 	host := r.Host
-	// Exact match first
 	if cfg, ok := s.hostIndex[host]; ok {
 		return cfg
 	}
-	// Fallback: strip port and try bare hostname
+	// Strip port and retry
 	if idx := strings.LastIndex(host, ":"); idx != -1 {
 		if cfg, ok := s.hostIndex[host[:idx]]; ok {
 			return cfg
 		}
 	}
-	// Query-param override (for testing: ?container=my-app)
+	// Query-param fallback for testing: ?container=my-app
 	if name := r.URL.Query().Get("container"); name != "" {
 		for i := range s.cfg.Containers {
 			if s.cfg.Containers[i].Name == name {
@@ -79,9 +85,9 @@ func (s *Server) resolveConfig(r *http.Request) *ContainerConfig {
 	return nil
 }
 
-// handleRequest is the main entry point: proxy or serve loading page.
+// ─── Main handler ─────────────────────────────────────────────────────────────
+
 func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
-	// Skip internal endpoints that arrive here due to mux routing edge cases
 	if r.URL.Path == "/_health" || r.URL.Path == "/_logs" {
 		http.NotFound(w, r)
 		return
@@ -110,11 +116,12 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Container not running — trigger async start and serve loading page.
+	// Container not running — pre-set state and trigger async start
+	s.manager.InitStartState(cfg.Name)
 	go func() {
-		bgCtx, cancel := context.WithTimeout(context.Background(), cfg.StartTimeout+5*time.Second)
+		bgCtx, cancel := context.WithTimeout(context.Background(), cfg.StartTimeout+10*time.Second)
 		defer cancel()
-		if _, err := s.manager.EnsureRunning(bgCtx, cfg); err != nil {
+		if err := s.manager.EnsureRunning(bgCtx, cfg); err != nil {
 			fmt.Printf("async start error for %q: %v\n", cfg.Name, err)
 		}
 	}()
@@ -122,26 +129,46 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	s.serveLoadingPage(w, r, cfg)
 }
 
-// handleHealth returns {"status":"<docker-status>"} for polling by the loading page.
+// ─── Internal endpoints ───────────────────────────────────────────────────────
+
+// handleHealth returns {"status":"starting"|"running"|"failed","error":"..."}.
+// The loading page JS polls this to know when to redirect or show inline error.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	if !s.rateLimiter.Allow(clientIP(r)) {
+		http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
+		return
+	}
+
 	cfg := s.resolveConfig(r)
 	if cfg == nil {
 		http.Error(w, "unknown container", http.StatusBadRequest)
 		return
 	}
 
-	status, err := s.manager.client.GetContainerStatus(r.Context(), cfg.Name)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+	status, errMsg := s.manager.GetStartState(cfg.Name)
+
+	// If no start attempt recorded yet, fall back to Docker status
+	if status == "unknown" {
+		dockerStatus, err := s.manager.client.GetContainerStatus(r.Context(), cfg.Name)
+		if err == nil && dockerStatus == "running" {
+			status = "running"
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": status})
+	json.NewEncoder(w).Encode(map[string]string{
+		"status": status,
+		"error":  errMsg,
+	})
 }
 
-// handleLogs returns {"lines":["..."]} with the last N log lines of the container.
+// handleLogs returns {"lines":["..."]} with the last N log lines.
 func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
+	if !s.rateLimiter.Allow(clientIP(r)) {
+		http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
+		return
+	}
+
 	cfg := s.resolveConfig(r)
 	if cfg == nil {
 		http.Error(w, "unknown container", http.StatusBadRequest)
@@ -150,7 +177,6 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 
 	lines, err := s.manager.client.GetContainerLogs(r.Context(), cfg.Name, s.cfg.Gateway.LogLines)
 	if err != nil {
-		// Return empty lines rather than an error — the container may be starting.
 		lines = []string{}
 	}
 
@@ -158,23 +184,143 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string][]string{"lines": lines})
 }
 
-// proxyRequest forwards the HTTP request to the target container.
+// ─── Proxy ────────────────────────────────────────────────────────────────────
+
+// isWebSocketRequest returns true if the request is a WebSocket upgrade.
+func isWebSocketRequest(r *http.Request) bool {
+	return strings.EqualFold(r.Header.Get("Upgrade"), "websocket") &&
+		strings.Contains(strings.ToLower(r.Header.Get("Connection")), "upgrade")
+}
+
+// proxyRequest forwards an HTTP (or WebSocket) request to the target container.
 func (s *Server) proxyRequest(w http.ResponseWriter, r *http.Request, cfg *ContainerConfig) {
-	ip, err := s.manager.client.GetContainerAddress(r.Context(), cfg.Name)
+	ip, err := s.manager.client.GetContainerAddress(r.Context(), cfg.Name, cfg.Network)
 	if err != nil {
 		s.serveErrorPage(w, r, cfg, fmt.Sprintf("Networking error: %v", err))
 		return
 	}
 
-	targetURL, _ := url.Parse(fmt.Sprintf("http://%s:%s", ip, cfg.TargetPort))
+	addr := fmt.Sprintf("%s:%s", ip, cfg.TargetPort)
+
+	if isWebSocketRequest(r) {
+		s.proxyWebSocket(w, r, addr)
+		return
+	}
+
+	targetURL, _ := url.Parse("http://" + addr)
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+
+	// Pass client IP information to the backend
+	setForwardedHeaders(r, ip)
 
 	r.URL.Host = targetURL.Host
 	r.URL.Scheme = targetURL.Scheme
-	r.Header.Set("X-Forwarded-Host", r.Header.Get("Host"))
 	r.Host = targetURL.Host
 
 	proxy.ServeHTTP(w, r)
+}
+
+// proxyWebSocket tunnels a WebSocket upgrade through a raw TCP connection.
+// It hijacks the client conn and opens a new TCP connection to the backend,
+// then copies bidirectionally.
+func (s *Server) proxyWebSocket(w http.ResponseWriter, r *http.Request, backendAddr string) {
+	hijacker, ok := w.(http.Hijacker)
+	if !ok {
+		http.Error(w, "WebSocket proxying not supported by this server", http.StatusInternalServerError)
+		return
+	}
+
+	backend, err := net.DialTimeout("tcp", backendAddr, 10*time.Second)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("WebSocket backend unreachable: %v", err), http.StatusBadGateway)
+		return
+	}
+	defer backend.Close()
+
+	clientConn, _, err := hijacker.Hijack()
+	if err != nil {
+		return
+	}
+	defer clientConn.Close()
+
+	// Forward the original upgrade request to the backend
+	if err := r.Write(backend); err != nil {
+		return
+	}
+
+	// Bidirectional copy until one side closes
+	done := make(chan struct{}, 2)
+	copy := func(dst io.Writer, src io.Reader) {
+		io.Copy(dst, src) //nolint:errcheck
+		done <- struct{}{}
+	}
+	go copy(backend, clientConn)
+	go copy(clientConn, backend)
+	<-done
+}
+
+// setForwardedHeaders adds X-Forwarded-For, X-Real-IP and X-Forwarded-Proto
+// to the outgoing request so the backend can see the original client IP.
+func setForwardedHeaders(r *http.Request, serverIP string) {
+	clientIP, _, _ := net.SplitHostPort(r.RemoteAddr)
+
+	// X-Forwarded-For: append our client IP to any existing chain
+	if prior := r.Header.Get("X-Forwarded-For"); prior != "" {
+		r.Header.Set("X-Forwarded-For", prior+", "+clientIP)
+	} else {
+		r.Header.Set("X-Forwarded-For", clientIP)
+	}
+
+	// X-Real-IP: the original client (not set if already present upstream)
+	if r.Header.Get("X-Real-IP") == "" {
+		r.Header.Set("X-Real-IP", clientIP)
+	}
+
+	// X-Forwarded-Proto
+	proto := "http"
+	if r.TLS != nil {
+		proto = "https"
+	}
+	r.Header.Set("X-Forwarded-Proto", proto)
+	r.Header.Set("X-Forwarded-Host", r.Host)
+}
+
+// clientIP extracts the client IP from the request, respecting X-Forwarded-For.
+func clientIP(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		parts := strings.SplitN(xff, ",", 2)
+		return strings.TrimSpace(parts[0])
+	}
+	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+	return ip
+}
+
+// ─── Rate limiter ─────────────────────────────────────────────────────────────
+
+// rateLimiter enforces a minimum interval between requests per IP.
+type rateLimiter struct {
+	mu          sync.Mutex
+	lastSeen    map[string]time.Time
+	minInterval time.Duration
+}
+
+func newRateLimiter(minInterval time.Duration) *rateLimiter {
+	return &rateLimiter{
+		lastSeen:    make(map[string]time.Time),
+		minInterval: minInterval,
+	}
+}
+
+// Allow returns true if this IP is allowed to proceed (not rate-limited).
+func (rl *rateLimiter) Allow(ip string) bool {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	last, ok := rl.lastSeen[ip]
+	if !ok || time.Since(last) >= rl.minInterval {
+		rl.lastSeen[ip] = time.Now()
+		return true
+	}
+	return false
 }
 
 // ─── Template data structs ────────────────────────────────────────────────────
@@ -184,7 +330,7 @@ type loadingData struct {
 	RequestID     string
 	RequestPath   string
 	RedirectPath  string
-	StartTimeout  string // human-readable for display
+	StartTimeout  string
 }
 
 type errorData struct {

@@ -15,8 +15,9 @@ containers:
   - name: "slow-app"
     host: "slow-app.localhost:8080"
     target_port: "80"
-    start_timeout: "90s"   # generous: boot takes ~15s
-    idle_timeout: "5m"     # auto-stop after 5 min idle
+    network: ""         # leave empty to use first available network
+    start_timeout: "90s"
+    idle_timeout: "5m"
     redirect_path: "/"
 
   # ------------------------------------------------------------------
@@ -27,6 +28,7 @@ containers:
   - name: "fail-app"
     host: "fail-app.localhost:8080"
     target_port: "80"
-    start_timeout: "8s"    # short: force timeout fast for testing
-    idle_timeout: "0"      # never auto-stop (irrelevant — always fails)
+    network: ""         # leave empty to use first available network
+    start_timeout: "8s"
+    idle_timeout: "0"
     redirect_path: "/"

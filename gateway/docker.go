@@ -5,9 +5,12 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"strings"
+	"time"
 
 	"github.com/docker/docker/api/types/container"
+	dockernetwork "github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 )
 
@@ -34,18 +37,65 @@ func (d *DockerClient) GetContainerStatus(ctx context.Context, containerName str
 	return info.State.Status, nil
 }
 
-// GetContainerAddress returns the primary internal IP address of the container.
-func (d *DockerClient) GetContainerAddress(ctx context.Context, containerName string) (string, error) {
+// GetContainerAddress returns the IP address of the container.
+// If network is non-empty, it looks up that specific Docker network.
+// Otherwise it returns the IP from the first available network.
+func (d *DockerClient) GetContainerAddress(ctx context.Context, containerName, network string) (string, error) {
 	info, err := d.cli.ContainerInspect(ctx, containerName)
 	if err != nil {
 		return "", err
 	}
-	for _, network := range info.NetworkSettings.Networks {
-		if network.IPAddress != "" {
-			return network.IPAddress, nil
+
+	nets := info.NetworkSettings.Networks
+	if len(nets) == 0 {
+		return "", fmt.Errorf("container %s has no network interfaces", containerName)
+	}
+
+	// Prefer the requested network if specified
+	if network != "" {
+		if n, ok := nets[network]; ok && n.IPAddress != "" {
+			return n.IPAddress, nil
+		}
+		return "", fmt.Errorf("container %s is not on network %q (attached networks: %s)",
+			containerName, network, joinNetworkNames(nets))
+	}
+
+	// Fallback: return the first non-empty IP
+	for _, n := range nets {
+		if n.IPAddress != "" {
+			return n.IPAddress, nil
 		}
 	}
 	return "", fmt.Errorf("could not find IP address for container %s", containerName)
+}
+
+// joinNetworkNames lists attached network names for error messages.
+func joinNetworkNames(nets map[string]*dockernetwork.EndpointSettings) string {
+	names := make([]string, 0, len(nets))
+	for name := range nets {
+		names = append(names, name)
+	}
+	return strings.Join(names, ", ")
+}
+
+// ProbeTCP attempts a TCP connection to ip:port, retrying every 300 ms until
+// the connection succeeds or ctx is cancelled. Returns nil on success.
+func (d *DockerClient) ProbeTCP(ctx context.Context, ip, port string) error {
+	addr := net.JoinHostPort(ip, port)
+	for {
+		dialer := &net.Dialer{}
+		conn, err := dialer.DialContext(ctx, "tcp", addr)
+		if err == nil {
+			conn.Close()
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("TCP probe timed out for %s: %w", addr, ctx.Err())
+		case <-time.After(300 * time.Millisecond):
+			// retry
+		}
+	}
 }
 
 // StartContainer starts a container by name.
@@ -59,8 +109,8 @@ func (d *DockerClient) StopContainer(ctx context.Context, containerName string) 
 }
 
 // GetContainerLogs returns the last n log lines from the container.
-// Lines are sanitised: Docker's 8-byte stream header is stripped and
-// ANSI escape codes are removed so the output is safe for HTML embedding.
+// Lines are sanitised: Docker's 8-byte stream header is stripped and the
+// output is safe for rendering as plain text in the browser.
 func (d *DockerClient) GetContainerLogs(ctx context.Context, containerName string, n int) ([]string, error) {
 	tail := fmt.Sprintf("%d", n)
 	opts := container.LogsOptions{
@@ -80,11 +130,8 @@ func (d *DockerClient) GetContainerLogs(ctx context.Context, containerName strin
 		return nil, err
 	}
 
-	// Docker multiplexes stdout/stderr with an 8-byte header per frame.
-	// We strip the header bytes so only the text content remains.
 	text := stripDockerLogHeaders(raw)
 
-	// Split into lines, trim whitespace, drop empty.
 	var lines []string
 	for _, l := range strings.Split(text, "\n") {
 		l = strings.TrimRight(l, "\r")
@@ -92,16 +139,14 @@ func (d *DockerClient) GetContainerLogs(ctx context.Context, containerName strin
 			lines = append(lines, l)
 		}
 	}
-
-	// Return only the last n lines (the API tail is approximate for short logs)
 	if len(lines) > n {
 		lines = lines[len(lines)-n:]
 	}
 	return lines, nil
 }
 
-// stripDockerLogHeaders removes the 8-byte multiplexing header that Docker
-// prepends to each log frame: [stream_type(1), 0, 0, 0, size(4)] + payload.
+// stripDockerLogHeaders removes the 8-byte multiplexing header Docker prepends
+// to each log frame: [stream_type(1), 0, 0, 0, size(4)] + payload.
 func stripDockerLogHeaders(b []byte) string {
 	var buf bytes.Buffer
 	for len(b) >= 8 {

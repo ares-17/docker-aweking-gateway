@@ -36,6 +36,10 @@ type ContainerConfig struct {
 	// IdleTimeout is how long the container may be idle (no incoming requests)
 	// before it is automatically stopped. 0 means never auto-stop. (default: 0)
 	IdleTimeout time.Duration `yaml:"idle_timeout"`
+	// Network is an optional Docker network name. When set, GetContainerAddress
+	// will look up the container IP on this specific network. If empty, the
+	// first available network is used. (default: "")
+	Network string `yaml:"network"`
 	// RedirectPath is the URL path the browser is sent to once the container is
 	// running. Useful when the web UI is not at "/". (default: "/")
 	RedirectPath string `yaml:"redirect_path"`

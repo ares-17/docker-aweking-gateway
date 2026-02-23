@@ -2,27 +2,44 @@ package gateway
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"sync"
 	"time"
 )
+
+// startStatus represents the lifecycle state of a container start attempt.
+type startStatus string
+
+const (
+	statusStarting startStatus = "starting"
+	statusRunning  startStatus = "running"
+	statusFailed   startStatus = "failed"
+)
+
+// startState holds the current state of a container start attempt.
+type startState struct {
+	Status startStatus
+	Err    string
+}
 
 // ContainerManager orchestrates container lifecycle: starting on demand,
 // preventing concurrent starts, and auto-stopping idle containers.
 type ContainerManager struct {
 	client *DockerClient
 
-	// mu protects the locks and lastSeen maps
-	mu       sync.Mutex
-	locks    map[string]*sync.Mutex
-	lastSeen map[string]time.Time
+	mu          sync.Mutex
+	locks       map[string]*sync.Mutex
+	lastSeen    map[string]time.Time
+	startStates map[string]*startState
 }
 
 func NewContainerManager(client *DockerClient) *ContainerManager {
 	return &ContainerManager{
-		client:   client,
-		locks:    make(map[string]*sync.Mutex),
-		lastSeen: make(map[string]time.Time),
+		client:      client,
+		locks:       make(map[string]*sync.Mutex),
+		lastSeen:    make(map[string]time.Time),
+		startStates: make(map[string]*startState),
 	}
 }
 
@@ -36,6 +53,31 @@ func (m *ContainerManager) getLock(containerName string) *sync.Mutex {
 	return m.locks[containerName]
 }
 
+// setStartState updates the start state for a container (thread-safe).
+func (m *ContainerManager) setStartState(name string, status startStatus, errMsg string) {
+	m.mu.Lock()
+	m.startStates[name] = &startState{Status: status, Err: errMsg}
+	m.mu.Unlock()
+}
+
+// GetStartState returns the current start state for a container.
+// It is used by the server's /_health endpoint.
+func (m *ContainerManager) GetStartState(name string) (status string, errMsg string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.startStates[name]
+	if !ok {
+		return "unknown", ""
+	}
+	return string(s.Status), s.Err
+}
+
+// InitStartState marks a container as "starting" before the async goroutine
+// fires. This prevents the first /_health poll from returning "unknown".
+func (m *ContainerManager) InitStartState(name string) {
+	m.setStartState(name, statusStarting, "")
+}
+
 // RecordActivity records the current time as the last activity for a container.
 // Call this on every successfully proxied request.
 func (m *ContainerManager) RecordActivity(containerName string) {
@@ -45,15 +87,18 @@ func (m *ContainerManager) RecordActivity(containerName string) {
 }
 
 // EnsureRunning checks whether a container is running and, if not, starts it.
-// It uses cfg.StartTimeout as the maximum wait time and prevents duplicate starts
-// via a per-container mutex. Returns "running" on success or an error.
-func (m *ContainerManager) EnsureRunning(ctx context.Context, cfg *ContainerConfig) (string, error) {
+// Flow: docker start → wait for "running" state → TCP probe → mark ready.
+// Uses cfg.StartTimeout as the total budget for the entire sequence.
+func (m *ContainerManager) EnsureRunning(ctx context.Context, cfg *ContainerConfig) error {
+	// Check current Docker status
 	status, err := m.client.GetContainerStatus(ctx, cfg.Name)
 	if err != nil {
-		return "", err
+		m.setStartState(cfg.Name, statusFailed, fmt.Sprintf("inspect error: %v", err))
+		return err
 	}
 	if status == "running" {
-		return "running", nil
+		// Already running — probe TCP to ensure the app is actually listening
+		return m.probeTCPReady(ctx, cfg)
 	}
 
 	// Acquire per-container lock to prevent parallel start attempts.
@@ -61,21 +106,25 @@ func (m *ContainerManager) EnsureRunning(ctx context.Context, cfg *ContainerConf
 	lock.Lock()
 	defer lock.Unlock()
 
-	// Double-check after acquiring lock (another goroutine may have started it).
+	// Double-check after acquiring lock.
 	status, err = m.client.GetContainerStatus(ctx, cfg.Name)
 	if err != nil {
-		return "", err
+		m.setStartState(cfg.Name, statusFailed, fmt.Sprintf("inspect error: %v", err))
+		return err
 	}
 	if status == "running" {
-		return "running", nil
+		return m.probeTCPReady(ctx, cfg)
 	}
 
 	// Start the container.
+	m.setStartState(cfg.Name, statusStarting, "")
 	if err := m.client.StartContainer(ctx, cfg.Name); err != nil {
-		return "", err
+		msg := fmt.Sprintf("docker start failed: %v", err)
+		m.setStartState(cfg.Name, statusFailed, msg)
+		return fmt.Errorf("%s", msg)
 	}
 
-	// Poll until running or start_timeout elapses.
+	// Poll until Docker reports "running" or start_timeout elapses.
 	timeoutCtx, cancel := context.WithTimeout(ctx, cfg.StartTimeout)
 	defer cancel()
 
@@ -85,23 +134,47 @@ func (m *ContainerManager) EnsureRunning(ctx context.Context, cfg *ContainerConf
 	for {
 		select {
 		case <-timeoutCtx.Done():
-			return "", timeoutCtx.Err()
+			msg := fmt.Sprintf("start timeout after %s", cfg.StartTimeout)
+			m.setStartState(cfg.Name, statusFailed, msg)
+			return fmt.Errorf("%s", msg)
 		case <-ticker.C:
 			status, err := m.client.GetContainerStatus(ctx, cfg.Name)
 			if err != nil {
 				continue
 			}
 			if status == "running" {
-				return "running", nil
+				// TCP probe with remaining budget
+				return m.probeTCPReady(timeoutCtx, cfg)
+			}
+			if status == "exited" || status == "dead" {
+				msg := fmt.Sprintf("container exited unexpectedly (status=%s)", status)
+				m.setStartState(cfg.Name, statusFailed, msg)
+				return fmt.Errorf("%s", msg)
 			}
 		}
 	}
 }
 
+// probeTCPReady probes ip:port until the app responds or ctx expires.
+func (m *ContainerManager) probeTCPReady(ctx context.Context, cfg *ContainerConfig) error {
+	ip, err := m.client.GetContainerAddress(ctx, cfg.Name, cfg.Network)
+	if err != nil {
+		msg := fmt.Sprintf("cannot resolve container address: %v", err)
+		m.setStartState(cfg.Name, statusFailed, msg)
+		return fmt.Errorf("%s", msg)
+	}
+	if err := m.client.ProbeTCP(ctx, ip, cfg.TargetPort); err != nil {
+		msg := fmt.Sprintf("app not responding on port %s: %v", cfg.TargetPort, err)
+		m.setStartState(cfg.Name, statusFailed, msg)
+		return fmt.Errorf("%s", msg)
+	}
+	m.setStartState(cfg.Name, statusRunning, "")
+	return nil
+}
+
 // StartIdleWatcher starts a background goroutine that periodically checks
-// each container's last activity time. Containers that have exceeded their
-// idle_timeout are stopped automatically.
-// Containers with IdleTimeout == 0 are never stopped.
+// each container's last activity time. Containers with IdleTimeout > 0
+// that have been idle longer than their timeout are stopped automatically.
 func (m *ContainerManager) StartIdleWatcher(ctx context.Context, cfgs []ContainerConfig) {
 	go func() {
 		ticker := time.NewTicker(1 * time.Minute)
@@ -132,21 +205,23 @@ func (m *ContainerManager) checkIdle(ctx context.Context, cfgs []ContainerConfig
 		}
 		last, seen := snapshot[cfg.Name]
 		if !seen {
-			continue // never had traffic, don't auto-stop
+			continue
 		}
 		if now.Sub(last) < cfg.IdleTimeout {
 			continue
 		}
-
-		// Check the container is actually running before stopping.
 		status, err := m.client.GetContainerStatus(ctx, cfg.Name)
 		if err != nil || status != "running" {
 			continue
 		}
-
 		log.Printf("idle-watcher: stopping %q (idle for %s)", cfg.Name, now.Sub(last).Round(time.Second))
 		if err := m.client.StopContainer(ctx, cfg.Name); err != nil {
 			log.Printf("idle-watcher: failed to stop %q: %v", cfg.Name, err)
+		} else {
+			// Reset start state so next request triggers a fresh start
+			m.mu.Lock()
+			delete(m.startStates, cfg.Name)
+			m.mu.Unlock()
 		}
 	}
 }
