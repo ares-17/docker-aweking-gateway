@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -26,12 +27,13 @@ var templatesFS embed.FS
 
 // Server handles HTTP traffic for the gateway.
 type Server struct {
-	manager     *ContainerManager
-	configMu    sync.RWMutex
-	cfg         *GatewayConfig
-	hostIndex   map[string]*ContainerConfig
-	tmpl        *template.Template
-	rateLimiter *rateLimiter
+	manager      *ContainerManager
+	configMu     sync.RWMutex
+	cfg          *GatewayConfig
+	hostIndex    map[string]*ContainerConfig
+	trustedCIDRs []*net.IPNet
+	tmpl         *template.Template
+	rateLimiter  *rateLimiter
 }
 
 func NewServer(manager *ContainerManager, cfg *GatewayConfig) (*Server, error) {
@@ -41,11 +43,12 @@ func NewServer(manager *ContainerManager, cfg *GatewayConfig) (*Server, error) {
 	}
 
 	return &Server{
-		manager:     manager,
-		cfg:         cfg,
-		hostIndex:   BuildHostIndex(cfg),
-		tmpl:        tmpl,
-		rateLimiter: newRateLimiter(1 * time.Second),
+		manager:      manager,
+		cfg:          cfg,
+		hostIndex:    BuildHostIndex(cfg),
+		trustedCIDRs: parseTrustedProxies(cfg.Gateway.TrustedProxies),
+		tmpl:         tmpl,
+		rateLimiter:  newRateLimiter(1 * time.Second),
 	}, nil
 }
 
@@ -64,7 +67,11 @@ func (s *Server) Start() error {
 		Handler:      mux,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  120 * time.Second,
 	}
+
+	// Start rate limiter cleanup goroutine
+	s.rateLimiter.startCleanup(context.Background(), 5*time.Minute)
 
 	fmt.Printf("Docker Awakening Gateway v%s listening on :%s\n", gatewayVersion, s.GetConfig().Gateway.Port)
 	return srv.ListenAndServe()
@@ -78,6 +85,7 @@ func (s *Server) ReloadConfig(newCfg *GatewayConfig) {
 	defer s.configMu.Unlock()
 	s.cfg = newCfg
 	s.hostIndex = BuildHostIndex(newCfg)
+	s.trustedCIDRs = parseTrustedProxies(newCfg.Gateway.TrustedProxies)
 }
 
 // GetConfig safely retrieves the current configuration.
@@ -184,7 +192,7 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 // handleHealth returns {"status":"starting"|"running"|"failed","error":"..."}.
 // The loading page JS polls this to know when to redirect or show inline error.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	if !s.rateLimiter.Allow(clientIP(r)) {
+	if !s.rateLimiter.Allow(s.clientIP(r)) {
 		http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
 		return
 	}
@@ -214,7 +222,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 // handleLogs returns {"lines":["..."]} with the last N log lines.
 func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
-	if !s.rateLimiter.Allow(clientIP(r)) {
+	if !s.rateLimiter.Allow(s.clientIP(r)) {
 		http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
 		return
 	}
@@ -335,14 +343,64 @@ func setForwardedHeaders(r *http.Request, serverIP string) {
 	r.Header.Set("X-Forwarded-Host", r.Host)
 }
 
-// clientIP extracts the client IP from the request, respecting X-Forwarded-For.
-func clientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		parts := strings.SplitN(xff, ",", 2)
-		return strings.TrimSpace(parts[0])
+// clientIP returns the real client IP for rate-limiting purposes.
+// It trusts X-Forwarded-For ONLY if RemoteAddr is from a configured trusted proxy.
+func (s *Server) clientIP(r *http.Request) string {
+	directIP, _, _ := net.SplitHostPort(r.RemoteAddr)
+
+	s.configMu.RLock()
+	trusted := s.trustedCIDRs
+	s.configMu.RUnlock()
+
+	if len(trusted) > 0 && isTrustedProxy(directIP, trusted) {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			parts := strings.SplitN(xff, ",", 2)
+			return strings.TrimSpace(parts[0])
+		}
 	}
-	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
-	return ip
+	return directIP
+}
+
+// isTrustedProxy checks if the given IP falls within any of the trusted CIDR blocks.
+func isTrustedProxy(ip string, cidrs []*net.IPNet) bool {
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		return false
+	}
+	for _, cidr := range cidrs {
+		if cidr.Contains(parsed) {
+			return true
+		}
+	}
+	return false
+}
+
+// parseTrustedProxies converts string CIDR notation into parsed IPNet structs.
+func parseTrustedProxies(proxies []string) []*net.IPNet {
+	var cidrs []*net.IPNet
+	for _, p := range proxies {
+		_, cidr, err := net.ParseCIDR(p)
+		if err != nil {
+			log.Printf("warning: invalid trusted_proxies CIDR %q: %v", p, err)
+			continue
+		}
+		cidrs = append(cidrs, cidr)
+	}
+	return cidrs
+}
+
+// validateOrigin blocks cross-origin POST requests from browsers.
+// Requests without an Origin header (curl, scripts) are allowed through.
+func validateOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true // non-browser client
+	}
+	parsed, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	return parsed.Host == r.Host
 }
 
 // ─── Rate limiter ─────────────────────────────────────────────────────────────
@@ -371,6 +429,34 @@ func (rl *rateLimiter) Allow(ip string) bool {
 		return true
 	}
 	return false
+}
+
+// startCleanup periodically evicts stale entries from the rate limiter.
+func (rl *rateLimiter) startCleanup(ctx context.Context, interval time.Duration) {
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				rl.evictStale()
+			}
+		}
+	}()
+}
+
+// evictStale removes IPs whose last access is older than 2× the rate limit interval.
+func (rl *rateLimiter) evictStale() {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	cutoff := time.Now().Add(-2 * rl.minInterval)
+	for ip, last := range rl.lastSeen {
+		if last.Before(cutoff) {
+			delete(rl.lastSeen, ip)
+		}
+	}
 }
 
 // ─── Template data structs ────────────────────────────────────────────────────
@@ -463,7 +549,7 @@ func (s *Server) handleStatusPage(w http.ResponseWriter, r *http.Request) {
 // handleStatusAPI returns a JSON snapshot of all managed containers.
 // Polled every ~5s by the status dashboard JS.
 func (s *Server) handleStatusAPI(w http.ResponseWriter, r *http.Request) {
-	if !s.rateLimiter.Allow(clientIP(r)) {
+	if !s.rateLimiter.Allow(s.clientIP(r)) {
 		http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
 		return
 	}
@@ -524,7 +610,11 @@ func (s *Server) handleStatusWake(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if !s.rateLimiter.Allow(clientIP(r)) {
+	if !validateOrigin(r) {
+		http.Error(w, "cross-origin request blocked", http.StatusForbidden)
+		return
+	}
+	if !s.rateLimiter.Allow(s.clientIP(r)) {
 		http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
 		return
 	}

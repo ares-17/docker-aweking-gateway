@@ -20,6 +20,10 @@ type GlobalConfig struct {
 	Port string `yaml:"port"`
 	// LogLines is the number of container log lines shown in the loading page (default: 30)
 	LogLines int `yaml:"log_lines"`
+	// TrustedProxies is a list of CIDR blocks (e.g. "10.0.0.0/8") whose
+	// X-Forwarded-For header is trusted for rate-limiting purposes.
+	// If empty, the gateway always uses RemoteAddr. (default: [])
+	TrustedProxies []string `yaml:"trusted_proxies"`
 }
 
 // ContainerConfig holds per-container settings

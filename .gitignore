@@ -23,3 +23,7 @@ vendor/
 
 # Mockup screenshots
 *.png
+
+.agent/
+.agents/
+skills-lock.json

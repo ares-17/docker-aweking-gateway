@@ -67,7 +67,14 @@ The `config.yaml` file is the **only** place where you can configure global gate
 gateway:
   port: "8080"        # Port the gateway proxy listens on
   log_lines: 30       # Number of container log lines shown in the browser loading UI
+  trusted_proxies:    # CIDR blocks whose X-Forwarded-For is trusted for rate limiting (default: [])
+    - "10.0.0.0/8"
+    - "172.16.0.0/12"
+    - "192.168.0.0/16"
 ```
+
+> [!NOTE]
+> If `trusted_proxies` is empty (default), the gateway **always uses `RemoteAddr`** for rate-limiting — `X-Forwarded-For` is ignored. This is the safest default, preventing IP spoofing attacks.
 
 ### Static Container Definitions
 

@@ -15,7 +15,7 @@
 - [x] **`CONFIG_PATH` env override** — point to any path for the config file
 - [x] **Config validation at startup** — gateway fails-fast if `config.yaml` is missing required fields (`name`, `host`, `target_port`) or contains duplicate definitions
 - [x] **Config hot-reload** — `docker kill -s HUP docker-gateway` reloads `config.yaml` at runtime without dropping connections or altering gateway state
-- [x] **Label-based auto-discovery** — gateway reads Docker labels (`gateway.host`, `gateway.port`, etc.) to automatically discover containers without static config file entries
+- [x] **Label-based auto-discovery** — gateway reads Docker labels (`dag.host`, `dag.target_port`, etc.) to automatically discover containers without static config file entries
 - [x] **Per-container `start_timeout`** — max time to wait for docker start + TCP probe
 - [x] **Per-container `idle_timeout`** — auto-stop containers idle longer than threshold (0 = disabled)
 - [x] **Per-container `target_port`** — proxy to any port on the container
@@ -66,8 +66,22 @@
 
 ## 📅 Medium-term
 
+### Features
 - [ ] **Customisable loading page** — per-container colour/logo/message overrides
 - [ ] **HTTP health probe** — optionally call a container's `/health` endpoint instead of TCP to confirm readiness
+- [ ] **Configurable discovery interval** — allow tuning the label polling frequency via config or env var (default: 15s)
+
+### Security
+- [ ] **Admin endpoint authentication** — optional basic-auth or bearer token to protect `/_status/*` and `/_metrics`
+- [x] **CORS / CSRF protection on `/_status/wake`** — prevent cross-origin container start abuse
+- [x] **Rate limiter memory cleanup** — periodic eviction of stale IPs to prevent unbounded memory growth
+- [x] **Trusted proxy configuration** — only trust `X-Forwarded-For` from known upstream proxies for rate limiting
+
+### Reliability & Quality
+- [ ] **Graceful shutdown** — `SIGTERM` / `SIGINT` triggers `http.Server.Shutdown()` with grace period + cancels all background goroutines
+- [ ] **Structured logging** — migrate from `log.Printf` / `fmt.Printf` to Go 1.21+ `log/slog` for JSON-structured output
+- [ ] **Discovery change detection** — only trigger `ReloadConfig` when the merged config actually differs from the current one
+- [ ] **Unit tests** — table-driven tests for config validation, discovery merging, rate limiter, and proxy routing
 
 ## 🔭 Long-term
 

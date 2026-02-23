@@ -1,0 +1,23 @@
+# Test files — never needed in the production image
+*_test.go
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Docs and metadata (not needed at runtime)
+*.md
+docs/
+LICENSE
+
+# Agent / AI config
+.agent/
+.agents/
+.gemini/
+skills-lock.json
