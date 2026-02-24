@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/http"
 	"strings"
 	"time"
 
@@ -135,6 +136,10 @@ func (d *DockerClient) DiscoverLabeledContainers(ctx context.Context) ([]Contain
 			cfg.Icon = val
 		}
 
+		if val, ok := c.Labels["dag.health_path"]; ok && val != "" {
+			cfg.HealthPath = val
+		}
+
 		configs = append(configs, cfg)
 	}
 
@@ -197,6 +202,32 @@ func (d *DockerClient) ProbeTCP(ctx context.Context, ip, port string) error {
 		case <-ctx.Done():
 			return fmt.Errorf("TCP probe timed out for %s: %w", addr, ctx.Err())
 		case <-time.After(300 * time.Millisecond):
+			// retry
+		}
+	}
+}
+
+// ProbeHTTP performs an HTTP GET to http://ip:port/path, retrying every 500 ms
+// until a 2xx response is received or ctx is cancelled. Returns nil on success.
+func (d *DockerClient) ProbeHTTP(ctx context.Context, ip, port, path string) error {
+	probeURL := fmt.Sprintf("http://%s:%s%s", ip, port, path)
+	httpClient := &http.Client{Timeout: 2 * time.Second}
+	for {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, probeURL, nil)
+		if err != nil {
+			return fmt.Errorf("HTTP probe request creation failed for %s: %w", probeURL, err)
+		}
+		resp, err := httpClient.Do(req)
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+				return nil
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("HTTP probe timed out for %s: %w", probeURL, ctx.Err())
+		case <-time.After(500 * time.Millisecond):
 			// retry
 		}
 	}

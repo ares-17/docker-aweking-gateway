@@ -180,6 +180,7 @@ func TestMergeConfigs_PreservesFields(t *testing.T) {
 			Network:      "backend",
 			RedirectPath: "/login",
 			Icon:         "nginx",
+			HealthPath:   "/healthz",
 		},
 	}
 
@@ -206,6 +207,9 @@ func TestMergeConfigs_PreservesFields(t *testing.T) {
 	}
 	if c.Icon != "nginx" {
 		t.Errorf("Icon = %q, want %q", c.Icon, "nginx")
+	}
+	if c.HealthPath != "/healthz" {
+		t.Errorf("HealthPath = %q, want %q", c.HealthPath, "/healthz")
 	}
 }
 

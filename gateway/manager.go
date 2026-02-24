@@ -122,7 +122,7 @@ func (m *ContainerManager) EnsureRunning(ctx context.Context, cfg *ContainerConf
 		return fmt.Errorf("failed to start container %q: %w", cfg.Name, err)
 	}
 
-	// Poll until TCP is ready or context expires
+	// Poll until readiness probe passes or context expires
 	ip, err := m.client.GetContainerAddress(ctx, cfg.Name, cfg.Network)
 	if err != nil {
 		m.setStartState(cfg.Name, statusFailed, "cannot find container IP")
@@ -149,10 +149,18 @@ func (m *ContainerManager) EnsureRunning(ctx context.Context, cfg *ContainerConf
 				return fmt.Errorf("container %q crashed during boot", cfg.Name)
 			}
 
-			// TCP probe
-			conn, err := net.DialTimeout("tcp", targetAddr, 500*time.Millisecond)
-			if err == nil {
-				conn.Close()
+			// Readiness probe: HTTP if health_path is set, TCP otherwise
+			var probeErr error
+			if cfg.HealthPath != "" {
+				probeErr = m.client.ProbeHTTP(ctx, ip, cfg.TargetPort, cfg.HealthPath)
+			} else {
+				conn, dialErr := net.DialTimeout("tcp", targetAddr, 500*time.Millisecond)
+				if dialErr == nil {
+					conn.Close()
+				}
+				probeErr = dialErr
+			}
+			if probeErr == nil {
 				m.RecordActivity(cfg.Name)
 				m.setStartState(cfg.Name, statusRunning, "")
 				RecordStart(cfg.Name, true, time.Since(start).Seconds())

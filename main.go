@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"docker-gateway/gateway"
 )
@@ -46,7 +45,8 @@ func main() {
 
 	// Initialize Auto-Discovery
 	discoveryManager := gateway.NewDiscoveryManager(dockerClient, cfg, server.ReloadConfig)
-	discoveryManager.Start(ctx, 15*time.Second)
+	discoveryManager.Start(ctx, cfg.Gateway.DiscoveryInterval)
+	slog.Info("discovery started", "interval", cfg.Gateway.DiscoveryInterval)
 
 	// Start idle-watcher goroutine with a callback to get the latest config
 	manager.StartIdleWatcher(ctx, func() []gateway.ContainerConfig {

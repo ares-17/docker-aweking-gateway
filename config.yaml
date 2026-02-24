@@ -6,6 +6,7 @@
 gateway:
   port: "8080"
   log_lines: 30
+  # discovery_interval: "15s"  # label polling frequency (default: 15s, or DISCOVERY_INTERVAL env var)
 
 containers:
 

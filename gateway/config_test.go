@@ -115,12 +115,15 @@ func TestApplyDefaults(t *testing.T) {
 				if cfg.Gateway.LogLines != 30 {
 					t.Errorf("LogLines = %d, want %d", cfg.Gateway.LogLines, 30)
 				}
+				if cfg.Gateway.DiscoveryInterval != 15*time.Second {
+					t.Errorf("DiscoveryInterval = %v, want %v", cfg.Gateway.DiscoveryInterval, 15*time.Second)
+				}
 			},
 		},
 		{
 			name: "explicit values preserved",
 			input: GatewayConfig{
-				Gateway: GlobalConfig{Port: "9090", LogLines: 50},
+				Gateway: GlobalConfig{Port: "9090", LogLines: 50, DiscoveryInterval: 30 * time.Second},
 			},
 			check: func(t *testing.T, cfg *GatewayConfig) {
 				if cfg.Gateway.Port != "9090" {
@@ -128,6 +131,9 @@ func TestApplyDefaults(t *testing.T) {
 				}
 				if cfg.Gateway.LogLines != 50 {
 					t.Errorf("LogLines should not be overridden, got %d", cfg.Gateway.LogLines)
+				}
+				if cfg.Gateway.DiscoveryInterval != 30*time.Second {
+					t.Errorf("DiscoveryInterval should not be overridden, got %v", cfg.Gateway.DiscoveryInterval)
 				}
 			},
 		},
@@ -151,6 +157,9 @@ func TestApplyDefaults(t *testing.T) {
 				}
 				if c.Icon != "docker" {
 					t.Errorf("Icon = %q, want %q", c.Icon, "docker")
+				}
+				if c.HealthPath != "" {
+					t.Errorf("HealthPath = %q, want empty", c.HealthPath)
 				}
 			},
 		},
@@ -422,3 +431,91 @@ containers:
 		t.Fatal("expected validation error for empty container name")
 	}
 }
+
+// ─── DISCOVERY_INTERVAL env var ───────────────────────────────────────────────
+
+func TestLoadConfig_DiscoveryIntervalEnvOverride(t *testing.T) {
+	yamlContent := `
+gateway:
+  port: "8080"
+  discovery_interval: "10s"
+containers:
+  - name: "app"
+    host: "app.local"
+    target_port: "80"
+`
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "config.yaml")
+	if err := os.WriteFile(path, []byte(yamlContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CONFIG_PATH", path)
+
+	t.Run("env var overrides YAML value", func(t *testing.T) {
+		t.Setenv("DISCOVERY_INTERVAL", "30s")
+		cfg, err := LoadConfig()
+		if err != nil {
+			t.Fatalf("LoadConfig() error: %v", err)
+		}
+		if cfg.Gateway.DiscoveryInterval != 30*time.Second {
+			t.Errorf("DiscoveryInterval = %v, want %v", cfg.Gateway.DiscoveryInterval, 30*time.Second)
+		}
+	})
+
+	t.Run("invalid env var falls back to YAML value", func(t *testing.T) {
+		t.Setenv("DISCOVERY_INTERVAL", "not-a-duration")
+		cfg, err := LoadConfig()
+		if err != nil {
+			t.Fatalf("LoadConfig() error: %v", err)
+		}
+		if cfg.Gateway.DiscoveryInterval != 10*time.Second {
+			t.Errorf("DiscoveryInterval = %v, want %v (YAML value)", cfg.Gateway.DiscoveryInterval, 10*time.Second)
+		}
+	})
+
+	t.Run("no env var uses YAML value", func(t *testing.T) {
+		t.Setenv("DISCOVERY_INTERVAL", "")
+		cfg, err := LoadConfig()
+		if err != nil {
+			t.Fatalf("LoadConfig() error: %v", err)
+		}
+		if cfg.Gateway.DiscoveryInterval != 10*time.Second {
+			t.Errorf("DiscoveryInterval = %v, want %v", cfg.Gateway.DiscoveryInterval, 10*time.Second)
+		}
+	})
+}
+
+// ─── health_path in YAML ──────────────────────────────────────────────────────
+
+func TestLoadConfig_HealthPathField(t *testing.T) {
+	yamlContent := `
+gateway:
+  port: "8080"
+containers:
+  - name: "with-health"
+    host: "app.local"
+    target_port: "80"
+    health_path: "/healthz"
+  - name: "without-health"
+    host: "api.local"
+    target_port: "80"
+`
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "config.yaml")
+	if err := os.WriteFile(path, []byte(yamlContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CONFIG_PATH", path)
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig() error: %v", err)
+	}
+	if cfg.Containers[0].HealthPath != "/healthz" {
+		t.Errorf("HealthPath = %q, want %q", cfg.Containers[0].HealthPath, "/healthz")
+	}
+	if cfg.Containers[1].HealthPath != "" {
+		t.Errorf("HealthPath = %q, want empty", cfg.Containers[1].HealthPath)
+	}
+}
+

@@ -21,3 +21,9 @@ LICENSE
 .agents/
 .gemini/
 skills-lock.json
+
+# Mockups
+mockups/
+
+# Docs
+docs/

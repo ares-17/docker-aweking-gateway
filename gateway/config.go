@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"reflect"
 	"time"
@@ -34,6 +35,9 @@ type GlobalConfig struct {
 	// X-Forwarded-For header is trusted for rate-limiting purposes.
 	// If empty, the gateway always uses RemoteAddr. (default: [])
 	TrustedProxies []string `yaml:"trusted_proxies"`
+	// DiscoveryInterval controls how often Docker labels are polled for
+	// auto-discovery. Overridable via DISCOVERY_INTERVAL env var. (default: 15s)
+	DiscoveryInterval time.Duration `yaml:"discovery_interval"`
 }
 
 // ContainerConfig holds per-container settings
@@ -61,6 +65,10 @@ type ContainerConfig struct {
 	// Displayed on the /_status dashboard card. See https://simpleicons.org
 	// for available slugs. (default: "docker")
 	Icon string `yaml:"icon"`
+	// HealthPath is an optional HTTP endpoint (e.g. "/health") called instead
+	// of a raw TCP dial to confirm container readiness. When empty the gateway
+	// falls back to a TCP probe. (default: "")
+	HealthPath string `yaml:"health_path"`
 }
 
 // LoadConfig reads and parses the YAML config file.
@@ -82,6 +90,15 @@ func LoadConfig() (*GatewayConfig, error) {
 	}
 
 	applyDefaults(&cfg)
+
+	// Allow DISCOVERY_INTERVAL env var to override the YAML / default value.
+	if envInterval := os.Getenv("DISCOVERY_INTERVAL"); envInterval != "" {
+		if d, err := time.ParseDuration(envInterval); err == nil {
+			cfg.Gateway.DiscoveryInterval = d
+		} else {
+			slog.Warn("invalid DISCOVERY_INTERVAL env var, using default", "value", envInterval, "error", err)
+		}
+	}
 
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid configuration: %w", err)
@@ -131,6 +148,9 @@ func applyDefaults(cfg *GatewayConfig) {
 	}
 	if cfg.Gateway.LogLines == 0 {
 		cfg.Gateway.LogLines = 30
+	}
+	if cfg.Gateway.DiscoveryInterval == 0 {
+		cfg.Gateway.DiscoveryInterval = 15 * time.Second
 	}
 
 	for i := range cfg.Containers {

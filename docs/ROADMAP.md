@@ -68,8 +68,8 @@
 
 ### Features
 - [ ] **Customisable loading page** — per-container colour/logo/message overrides
-- [ ] **HTTP health probe** — optionally call a container's `/health` endpoint instead of TCP to confirm readiness
-- [ ] **Configurable discovery interval** — allow tuning the label polling frequency via config or env var (default: 15s)
+- [x] **HTTP health probe** — optionally call a container's `/health` endpoint instead of TCP to confirm readiness
+- [x] **Configurable discovery interval** — allow tuning the label polling frequency via config or env var (default: 15s)
 
 ### Security
 - [ ] **Admin endpoint authentication** — optional basic-auth or bearer token to protect `/_status/*` and `/_metrics`
