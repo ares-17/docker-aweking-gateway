@@ -23,6 +23,19 @@ func (c *GatewayConfig) Equal(other *GatewayConfig) bool {
 type GatewayConfig struct {
 	Gateway    GlobalConfig      `yaml:"gateway"`
 	Containers []ContainerConfig `yaml:"containers"`
+	Groups     []GroupConfig     `yaml:"groups"`
+}
+
+// GroupConfig defines a load-balanced group of containers behind a single host.
+type GroupConfig struct {
+	// Name is the logical group name (e.g. "api-cluster")
+	Name string `yaml:"name"`
+	// Host is the incoming Host header that routes to this group
+	Host string `yaml:"host"`
+	// Strategy is the load-balancing algorithm. (default: "round-robin")
+	Strategy string `yaml:"strategy"`
+	// Containers is the ordered list of container names in this group
+	Containers []string `yaml:"containers"`
 }
 
 // GlobalConfig holds gateway-wide settings
@@ -69,6 +82,10 @@ type ContainerConfig struct {
 	// of a raw TCP dial to confirm container readiness. When empty the gateway
 	// falls back to a TCP probe. (default: "")
 	HealthPath string `yaml:"health_path"`
+	// DependsOn lists container names that must be running before this one starts.
+	// Dependencies are started in topological order and must pass their readiness
+	// probe before the next one begins. (default: [])
+	DependsOn []string `yaml:"depends_on"`
 }
 
 // LoadConfig reads and parses the YAML config file.
@@ -116,11 +133,36 @@ func (c *GatewayConfig) Validate() error {
 	seenNames := make(map[string]bool)
 	seenHosts := make(map[string]bool)
 
+	// Build a set of all container names for reference checking.
+	nameSet := make(map[string]bool, len(c.Containers))
+	for _, ctr := range c.Containers {
+		nameSet[ctr.Name] = true
+	}
+
+	// Build a set of containers that are group members (they don't need host).
+	groupMembers := make(map[string]bool)
+	for _, g := range c.Groups {
+		for _, cn := range g.Containers {
+			groupMembers[cn] = true
+		}
+	}
+
+	// Build a set of containers that are dependencies (they don't need host).
+	depTargets := make(map[string]bool)
+	for _, ctr := range c.Containers {
+		for _, dep := range ctr.DependsOn {
+			depTargets[dep] = true
+		}
+	}
+
 	for i, ctr := range c.Containers {
 		if ctr.Name == "" {
 			return fmt.Errorf("container #%d is missing required field 'name'", i+1)
 		}
-		if ctr.Host == "" {
+
+		// Host is required only if the container is NOT solely a group member or dependency.
+		needsHost := !groupMembers[ctr.Name] && !depTargets[ctr.Name]
+		if ctr.Host == "" && needsHost {
 			return fmt.Errorf("container %q is missing required field 'host'", ctr.Name)
 		}
 		if ctr.TargetPort == "" {
@@ -132,13 +174,116 @@ func (c *GatewayConfig) Validate() error {
 		}
 		seenNames[ctr.Name] = true
 
-		if seenHosts[ctr.Host] {
-			return fmt.Errorf("duplicate host mapped: %q (in container %q)", ctr.Host, ctr.Name)
+		if ctr.Host != "" {
+			if seenHosts[ctr.Host] {
+				return fmt.Errorf("duplicate host mapped: %q (in container %q)", ctr.Host, ctr.Name)
+			}
+			seenHosts[ctr.Host] = true
 		}
-		seenHosts[ctr.Host] = true
+
+		// Validate depends_on references exist.
+		for _, dep := range ctr.DependsOn {
+			if !nameSet[dep] {
+				return fmt.Errorf("container %q depends on unknown container %q", ctr.Name, dep)
+			}
+			if dep == ctr.Name {
+				return fmt.Errorf("container %q cannot depend on itself", ctr.Name)
+			}
+		}
+	}
+
+	// Validate groups.
+	seenGroupNames := make(map[string]bool)
+	for i, g := range c.Groups {
+		if g.Name == "" {
+			return fmt.Errorf("group #%d is missing required field 'name'", i+1)
+		}
+		if g.Host == "" {
+			return fmt.Errorf("group %q is missing required field 'host'", g.Name)
+		}
+		if len(g.Containers) == 0 {
+			return fmt.Errorf("group %q has no containers", g.Name)
+		}
+		if seenGroupNames[g.Name] {
+			return fmt.Errorf("duplicate group name found: %q", g.Name)
+		}
+		seenGroupNames[g.Name] = true
+
+		// Group host must not conflict with container hosts or other group hosts.
+		if seenHosts[g.Host] {
+			return fmt.Errorf("group %q host %q conflicts with an existing host", g.Name, g.Host)
+		}
+		seenHosts[g.Host] = true
+
+		for _, cn := range g.Containers {
+			if !nameSet[cn] {
+				return fmt.Errorf("group %q references unknown container %q", g.Name, cn)
+			}
+		}
+	}
+
+	// Detect dependency cycles via DFS.
+	if err := detectDependencyCycles(c.Containers); err != nil {
+		return err
 	}
 
 	return nil
+}
+
+// detectDependencyCycles performs a DFS-based cycle check on the depends_on graph.
+func detectDependencyCycles(containers []ContainerConfig) error {
+	// Build adjacency list.
+	deps := make(map[string][]string, len(containers))
+	for _, c := range containers {
+		deps[c.Name] = c.DependsOn
+	}
+
+	const (
+		unvisited = 0
+		visiting  = 1
+		visited   = 2
+	)
+	state := make(map[string]int, len(containers))
+
+	var visit func(name string, path []string) error
+	visit = func(name string, path []string) error {
+		if state[name] == visited {
+			return nil
+		}
+		if state[name] == visiting {
+			return fmt.Errorf("dependency cycle detected: %s → %s",
+				joinPath(path), name)
+		}
+		state[name] = visiting
+		for _, dep := range deps[name] {
+			if err := visit(dep, append(path, name)); err != nil {
+				return err
+			}
+		}
+		state[name] = visited
+		return nil
+	}
+
+	for _, c := range containers {
+		if state[c.Name] == unvisited {
+			if err := visit(c.Name, nil); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// joinPath joins a cycle path for human-readable error messages.
+func joinPath(path []string) string {
+	result := ""
+	for i, p := range path {
+		if i > 0 {
+			result += " → "
+		}
+		result += p
+	}
+	return result
 }
 
 // applyDefaults fills in sensible defaults for any unset field.
@@ -169,6 +314,13 @@ func applyDefaults(cfg *GatewayConfig) {
 			c.Icon = "docker"
 		}
 	}
+
+	for i := range cfg.Groups {
+		g := &cfg.Groups[i]
+		if g.Strategy == "" {
+			g.Strategy = "round-robin"
+		}
+	}
 }
 
 // BuildHostIndex returns a map from Host header value → ContainerConfig for O(1) lookup.
@@ -180,4 +332,24 @@ func BuildHostIndex(cfg *GatewayConfig) map[string]*ContainerConfig {
 		}
 	}
 	return idx
+}
+
+// BuildGroupHostIndex returns a map from Host header value → GroupConfig for O(1) lookup.
+func BuildGroupHostIndex(cfg *GatewayConfig) map[string]*GroupConfig {
+	idx := make(map[string]*GroupConfig, len(cfg.Groups))
+	for i := range cfg.Groups {
+		if cfg.Groups[i].Host != "" {
+			idx[cfg.Groups[i].Host] = &cfg.Groups[i]
+		}
+	}
+	return idx
+}
+
+// BuildContainerMap returns a map from container name → ContainerConfig for quick lookup.
+func BuildContainerMap(cfg *GatewayConfig) map[string]*ContainerConfig {
+	m := make(map[string]*ContainerConfig, len(cfg.Containers))
+	for i := range cfg.Containers {
+		m[cfg.Containers[i].Name] = &cfg.Containers[i]
+	}
+	return m
 }

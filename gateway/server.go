@@ -31,9 +31,12 @@ type Server struct {
 	configMu     sync.RWMutex
 	cfg          *GatewayConfig
 	hostIndex    map[string]*ContainerConfig
+	groupIndex   map[string]*GroupConfig
+	containerMap map[string]*ContainerConfig
 	trustedCIDRs []*net.IPNet
 	tmpl         *template.Template
 	rateLimiter  *rateLimiter
+	groupRouter  *GroupRouter
 	httpServer   *http.Server
 }
 
@@ -47,9 +50,12 @@ func NewServer(manager *ContainerManager, cfg *GatewayConfig) (*Server, error) {
 		manager:      manager,
 		cfg:          cfg,
 		hostIndex:    BuildHostIndex(cfg),
+		groupIndex:   BuildGroupHostIndex(cfg),
+		containerMap: BuildContainerMap(cfg),
 		trustedCIDRs: parseTrustedProxies(cfg.Gateway.TrustedProxies),
 		tmpl:         tmpl,
 		rateLimiter:  newRateLimiter(1 * time.Second),
+		groupRouter:  NewGroupRouter(),
 	}, nil
 }
 
@@ -110,6 +116,8 @@ func (s *Server) ReloadConfig(newCfg *GatewayConfig) {
 	defer s.configMu.Unlock()
 	s.cfg = newCfg
 	s.hostIndex = BuildHostIndex(newCfg)
+	s.groupIndex = BuildGroupHostIndex(newCfg)
+	s.containerMap = BuildContainerMap(newCfg)
 	s.trustedCIDRs = parseTrustedProxies(newCfg.Gateway.TrustedProxies)
 }
 
@@ -123,6 +131,7 @@ func (s *Server) GetConfig() *GatewayConfig {
 // ─── Request routing ──────────────────────────────────────────────────────────
 
 // resolveConfig maps an incoming request to its ContainerConfig by Host header.
+// Returns nil if no container matches (groups are checked separately via resolveGroup).
 func (s *Server) resolveConfig(r *http.Request) *ContainerConfig {
 	s.configMu.RLock()
 	defer s.configMu.RUnlock()
@@ -148,6 +157,23 @@ func (s *Server) resolveConfig(r *http.Request) *ContainerConfig {
 	return nil
 }
 
+// resolveGroup maps an incoming request to its GroupConfig by Host header.
+func (s *Server) resolveGroup(r *http.Request) *GroupConfig {
+	s.configMu.RLock()
+	defer s.configMu.RUnlock()
+
+	host := r.Host
+	if g, ok := s.groupIndex[host]; ok {
+		return g
+	}
+	if idx := strings.LastIndex(host, ":"); idx != -1 {
+		if g, ok := s.groupIndex[host[:idx]]; ok {
+			return g
+		}
+	}
+	return nil
+}
+
 // metricsResponseWriter wraps http.ResponseWriter to capture the HTTP status code.
 type metricsResponseWriter struct {
 	http.ResponseWriter
@@ -164,6 +190,12 @@ func (m *metricsResponseWriter) WriteHeader(statusCode int) {
 func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/_health" || r.URL.Path == "/_logs" || strings.HasPrefix(r.URL.Path, "/_status") || r.URL.Path == "/_metrics" {
 		http.NotFound(w, r)
+		return
+	}
+
+	// Try group routing first, then individual container.
+	if group := s.resolveGroup(r); group != nil {
+		s.handleGroupRequest(w, r, group)
 		return
 	}
 
@@ -194,22 +226,104 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if status == "running" {
+		// If there are dependencies, ensure they are running too.
+		if len(cfg.DependsOn) > 0 {
+			allContainers := s.GetConfig().Containers
+			for _, depName := range cfg.DependsOn {
+				depStatus, _ := s.manager.client.GetContainerStatus(ctx, depName)
+				if depStatus != "running" {
+					// Dependency not running — trigger async start of deps + container
+					s.manager.InitStartState(cfg.Name)
+					go func() {
+						bgCtx, cancel := context.WithTimeout(context.Background(), cfg.StartTimeout+10*time.Second)
+						defer cancel()
+						if err := s.manager.EnsureDepsRunning(bgCtx, cfg.Name, allContainers); err != nil {
+							slog.Error("dependency start error", "container", cfg.Name, "error", err)
+						}
+					}()
+					s.serveLoadingPage(mw, r, cfg)
+					return
+				}
+			}
+		}
 		s.manager.RecordActivity(cfg.Name)
 		s.proxyRequest(mw, r, cfg)
 		return
 	}
 
-	// Container not running — pre-set state and trigger async start
+	// Container not running — pre-set state and trigger async start (with deps)
 	s.manager.InitStartState(cfg.Name)
 	go func() {
 		bgCtx, cancel := context.WithTimeout(context.Background(), cfg.StartTimeout+10*time.Second)
 		defer cancel()
+		allContainers := s.GetConfig().Containers
+		if len(cfg.DependsOn) > 0 {
+			if err := s.manager.EnsureDepsRunning(bgCtx, cfg.Name, allContainers); err != nil {
+				slog.Error("dependency start error", "container", cfg.Name, "error", err)
+				return
+			}
+		}
 		if err := s.manager.EnsureRunning(bgCtx, cfg); err != nil {
 			slog.Error("async start error", "container", cfg.Name, "error", err)
 		}
 	}()
 
 	s.serveLoadingPage(mw, r, cfg)
+}
+
+// handleGroupRequest handles requests routed to a container group.
+// It picks a member via round-robin and proxies (or serves loading page).
+func (s *Server) handleGroupRequest(w http.ResponseWriter, r *http.Request, group *GroupConfig) {
+	// Pick the target member for this request via round-robin.
+	pickedName := s.groupRouter.Pick(group)
+
+	s.configMu.RLock()
+	pickedCfg, ok := s.containerMap[pickedName]
+	s.configMu.RUnlock()
+
+	if !ok {
+		http.Error(w, fmt.Sprintf("group %q member %q not found", group.Name, pickedName), http.StatusInternalServerError)
+		return
+	}
+
+	start := time.Now()
+	mw := &metricsResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+	defer func() {
+		duration := time.Since(start).Seconds()
+		RecordRequest(pickedCfg.Name, strconv.Itoa(mw.statusCode), duration)
+	}()
+
+	ctx := r.Context()
+	status, err := s.manager.client.GetContainerStatus(ctx, pickedCfg.Name)
+	if err != nil || status != "running" {
+		// Not all members running — trigger async group startup.
+		for _, mn := range group.Containers {
+			s.manager.InitStartState(mn)
+		}
+		go func() {
+			allContainers := s.GetConfig().Containers
+			// Use the max start_timeout among group members.
+			var maxTimeout time.Duration
+			for _, mn := range group.Containers {
+				if mc, exists := s.containerMap[mn]; exists && mc.StartTimeout > maxTimeout {
+					maxTimeout = mc.StartTimeout
+				}
+			}
+			if maxTimeout == 0 {
+				maxTimeout = 60 * time.Second
+			}
+			bgCtx, cancel := context.WithTimeout(context.Background(), maxTimeout+10*time.Second)
+			defer cancel()
+			if err := s.manager.EnsureGroupRunning(bgCtx, group, allContainers); err != nil {
+				slog.Error("group start error", "group", group.Name, "error", err)
+			}
+		}()
+		s.serveLoadingPage(mw, r, pickedCfg)
+		return
+	}
+
+	s.manager.RecordActivity(pickedCfg.Name)
+	s.proxyRequest(mw, r, pickedCfg)
 }
 
 // ─── Internal endpoints ───────────────────────────────────────────────────────

@@ -10,6 +10,23 @@ gateway:
 
 containers:
 
+# Example with dependency (uncomment to use):
+#  - name: "web-app"
+#    host: "app.localhost"
+#    target_port: "3000"
+#    depends_on: ["postgres"]   # postgres will be started first
+#
+#  - name: "postgres"
+#    target_port: "5432"        # no host needed — dependency-only
+
+# Example group with load balancing (uncomment to use):
+# groups:
+#   - name: "api-cluster"
+#     host: "api.localhost"
+#     strategy: "round-robin"   # default: round-robin
+#     containers: ["api-1", "api-2"]
+
+
 
   # ------------------------------------------------------------------
   # fail-app: always exits immediately with code 1.

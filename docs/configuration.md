@@ -33,6 +33,8 @@ You can fine-tune the container behavior by adding any of these optional labels:
 | `dag.network` | `""` | The specific Docker network to look for the container IP on. If empty, the first attached network is used. |
 | `dag.redirect_path` | `/` | The URL path to redirect the user to once the container successfully boots. |
 | `dag.icon` | `docker` | A [Simple Icons](https://simpleicons.org/) slug (e.g., `nginx`, `redis`) used for the `/_status` dashboard. |
+| `dag.health_path` | `""` | HTTP endpoint (e.g., `/healthz`) called instead of TCP dial to confirm readiness. |
+| `dag.depends_on` | `""` | Comma-separated list of container names that must be running first (e.g., `postgres,redis`). |
 
 ### Example `docker-compose.yml`
 
@@ -90,6 +92,20 @@ containers:
     network: "backend-net"       # (Default: "")
     redirect_path: "/login"      # (Default: /)
     icon: "postgresql"           # (Default: docker)
+    health_path: "/healthz"      # (Default: "" → TCP probe)
+    depends_on: ["postgres"]     # (Default: [])
+```
+
+### Container Groups
+
+You can define load-balanced groups in the `groups` array. See [Groups & Dependencies](groups-and-dependencies.md) for full details.
+
+```yaml
+groups:
+  - name: "api-cluster"          # (Required) Unique group name
+    host: "api.example.com"      # (Required) Host header to match
+    strategy: "round-robin"      # (Default: round-robin)
+    containers: ["api-1", "api-2", "api-3"]
 ```
 
 ### Hot-Reloading

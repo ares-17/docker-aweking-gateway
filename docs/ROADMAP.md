@@ -87,7 +87,7 @@
 
 - [ ] **Multi-instance / distributed state** — share `startStates` and `lastSeen` via Redis or etcd for horizontal scaling
 - [ ] **Built-in TLS termination** — ACME/Let's Encrypt via `golang.org/x/crypto/acme/autocert`
-- [ ] **Container grouping / weighted routing** — start a group of containers, load-balance across replicas
+- [x] **Container grouping / weighted routing** — start a group of containers, load-balance across replicas
 - [ ] **Admin UI** — lightweight web interface to view states, force wake/sleep, view logs, edit config
 
 ## Known Limitations (by design)

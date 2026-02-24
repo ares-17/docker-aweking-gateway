@@ -140,6 +140,14 @@ func (d *DockerClient) DiscoverLabeledContainers(ctx context.Context) ([]Contain
 			cfg.HealthPath = val
 		}
 
+		if val, ok := c.Labels["dag.depends_on"]; ok && val != "" {
+			cfg.DependsOn = strings.Split(val, ",")
+			// Trim whitespace from each dependency name
+			for j := range cfg.DependsOn {
+				cfg.DependsOn[j] = strings.TrimSpace(cfg.DependsOn[j])
+			}
+		}
+
 		configs = append(configs, cfg)
 	}
 

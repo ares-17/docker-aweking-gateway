@@ -170,6 +170,69 @@ func (m *ContainerManager) EnsureRunning(ctx context.Context, cfg *ContainerConf
 	}
 }
 
+// EnsureDepsRunning starts all dependencies for a container in topological order.
+// Each dependency is started sequentially and must pass its readiness probe
+// before the next one begins. Fails fast if any dependency fails.
+func (m *ContainerManager) EnsureDepsRunning(ctx context.Context, target string, allContainers []ContainerConfig) error {
+	order, err := TopologicalSort(target, allContainers)
+	if err != nil {
+		return fmt.Errorf("dependency resolution failed for %q: %w", target, err)
+	}
+
+	// Build a lookup map for container configs.
+	cfgMap := make(map[string]*ContainerConfig, len(allContainers))
+	for i := range allContainers {
+		cfgMap[allContainers[i].Name] = &allContainers[i]
+	}
+
+	// Start each dependency in order (target is last in the order).
+	// Skip the target itself — it will be started by the caller.
+	for _, name := range order {
+		if name == target {
+			continue
+		}
+		depCfg, ok := cfgMap[name]
+		if !ok {
+			return fmt.Errorf("dependency %q not found in container list", name)
+		}
+		slog.Info("starting dependency", "dependency", name, "for", target)
+		m.InitStartState(name)
+		if err := m.EnsureRunning(ctx, depCfg); err != nil {
+			return fmt.Errorf("dependency %q failed to start: %w", name, err)
+		}
+	}
+	return nil
+}
+
+// EnsureGroupRunning starts all group members and their dependencies,
+// returning nil when every member is running and ready.
+func (m *ContainerManager) EnsureGroupRunning(ctx context.Context, group *GroupConfig, allContainers []ContainerConfig) error {
+	cfgMap := make(map[string]*ContainerConfig, len(allContainers))
+	for i := range allContainers {
+		cfgMap[allContainers[i].Name] = &allContainers[i]
+	}
+
+	// Start dependencies for each group member first.
+	for _, memberName := range group.Containers {
+		if err := m.EnsureDepsRunning(ctx, memberName, allContainers); err != nil {
+			return fmt.Errorf("group %q: %w", group.Name, err)
+		}
+	}
+
+	// Start all group members.
+	for _, memberName := range group.Containers {
+		memberCfg, ok := cfgMap[memberName]
+		if !ok {
+			return fmt.Errorf("group %q: member %q not found", group.Name, memberName)
+		}
+		m.InitStartState(memberName)
+		if err := m.EnsureRunning(ctx, memberCfg); err != nil {
+			return fmt.Errorf("group %q: member %q failed: %w", group.Name, memberName, err)
+		}
+	}
+	return nil
+}
+
 // probeTCPReady probes ip:port until the app responds or ctx expires.
 // This function is no longer used after the EnsureRunning refactor.
 // func (m *ContainerManager) probeTCPReady(ctx context.Context, cfg *ContainerConfig) error {
