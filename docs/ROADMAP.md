@@ -72,7 +72,7 @@
 - [x] **Configurable discovery interval** — allow tuning the label polling frequency via config or env var (default: 15s)
 
 ### Security
-- [ ] **Admin endpoint authentication** — optional basic-auth or bearer token to protect `/_status/*` and `/_metrics`
+- [x] **Admin endpoint authentication** — optional basic-auth or bearer token to protect `/_status/*` and `/_metrics`
 - [x] **CORS / CSRF protection on `/_status/wake`** — prevent cross-origin container start abuse
 - [x] **Rate limiter memory cleanup** — periodic eviction of stale IPs to prevent unbounded memory growth
 - [x] **Trusted proxy configuration** — only trust `X-Forwarded-For` from known upstream proxies for rate limiting

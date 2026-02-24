@@ -115,10 +115,36 @@ services:
 |---|---|
 | `/_health?container=NAME` | Returns `{"status":"running"}` — polled by the loading page |
 | `/_logs?container=NAME` | Returns `{"lines":["..."]}` — polled every 3s by the log box |
-| `/_status` | Admin dashboard showing all managed containers with live status |
-| `/_status/api` | JSON snapshot of all containers — polled every 5s by the dashboard |
-| `/_status/wake?container=NAME` | POST — triggers container start from the dashboard |
-| `/_metrics` | Prometheus metrics endpoint. **[→ Read the Monitoring Guide](docs/prometheus.md)** |
+| `/_status` | Admin dashboard showing all managed containers with live status 🔒 |
+| `/_status/api` | JSON snapshot of all containers — polled every 5s by the dashboard 🔒 |
+| `/_status/wake?container=NAME` | POST — triggers container start from the dashboard 🔒 |
+| `/_metrics` | Prometheus metrics endpoint. **[→ Read the Monitoring Guide](docs/prometheus.md)** 🔒 |
+
+> [!NOTE]
+> Endpoints marked with 🔒 can be optionally protected with Basic Auth or Bearer Token. See **Admin Authentication** below.
+
+### Admin Authentication
+
+Admin endpoints (`/_status/*`, `/_metrics`) can be protected with optional authentication. This is disabled by default for backward compatibility.
+
+**Via `config.yaml`:**
+```yaml
+gateway:
+  admin_auth:
+    method: "basic"       # "none" (default), "basic", or "bearer"
+    username: "admin"
+    password: "s3cret"
+```
+
+**Via environment variables** (take priority over YAML):
+```yaml
+environment:
+  - ADMIN_AUTH_METHOD=bearer
+  - ADMIN_AUTH_TOKEN=my-secret-token
+```
+
+> [!WARNING]
+> Basic Auth and Bearer Token transmit credentials in cleartext over HTTP. In production, always place a TLS-terminating reverse proxy (Nginx, Caddy, Traefik) in front of the gateway.
 
 ## Test Scenarios (docker compose)
 

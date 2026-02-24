@@ -38,6 +38,21 @@ type GroupConfig struct {
 	Containers []string `yaml:"containers"`
 }
 
+// AdminAuthConfig holds optional authentication settings for admin endpoints
+// (/_status/*, /_metrics). When Method is "none" (the default), no authentication
+// is enforced and the gateway behaves exactly as before this feature.
+type AdminAuthConfig struct {
+	// Method is the authentication scheme: "none", "basic", or "bearer".
+	// Default: "none" (no authentication). Overridable via ADMIN_AUTH_METHOD env var.
+	Method string `yaml:"method"`
+	// Username is required when Method is "basic". Overridable via ADMIN_AUTH_USERNAME.
+	Username string `yaml:"username"`
+	// Password is required when Method is "basic". Overridable via ADMIN_AUTH_PASSWORD.
+	Password string `yaml:"password"`
+	// Token is required when Method is "bearer". Overridable via ADMIN_AUTH_TOKEN.
+	Token string `yaml:"token"`
+}
+
 // GlobalConfig holds gateway-wide settings
 type GlobalConfig struct {
 	// Port the gateway listens on (default: "8080")
@@ -51,6 +66,9 @@ type GlobalConfig struct {
 	// DiscoveryInterval controls how often Docker labels are polled for
 	// auto-discovery. Overridable via DISCOVERY_INTERVAL env var. (default: 15s)
 	DiscoveryInterval time.Duration `yaml:"discovery_interval"`
+	// AdminAuth configures optional authentication for admin endpoints.
+	// See AdminAuthConfig for details. (default: method "none")
+	AdminAuth AdminAuthConfig `yaml:"admin_auth"`
 }
 
 // ContainerConfig holds per-container settings
@@ -117,6 +135,20 @@ func LoadConfig() (*GatewayConfig, error) {
 		}
 	}
 
+	// Allow ADMIN_AUTH_* env vars to override YAML values.
+	if envMethod := os.Getenv("ADMIN_AUTH_METHOD"); envMethod != "" {
+		cfg.Gateway.AdminAuth.Method = envMethod
+	}
+	if envUser := os.Getenv("ADMIN_AUTH_USERNAME"); envUser != "" {
+		cfg.Gateway.AdminAuth.Username = envUser
+	}
+	if envPass := os.Getenv("ADMIN_AUTH_PASSWORD"); envPass != "" {
+		cfg.Gateway.AdminAuth.Password = envPass
+	}
+	if envToken := os.Getenv("ADMIN_AUTH_TOKEN"); envToken != "" {
+		cfg.Gateway.AdminAuth.Token = envToken
+	}
+
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid configuration: %w", err)
 	}
@@ -128,6 +160,23 @@ func LoadConfig() (*GatewayConfig, error) {
 func (c *GatewayConfig) Validate() error {
 	if c.Gateway.Port == "" {
 		return fmt.Errorf("gateway.port cannot be empty")
+	}
+
+	// Validate admin_auth settings.
+	switch c.Gateway.AdminAuth.Method {
+	case "", "none":
+		// ok — no authentication
+	case "basic":
+		if c.Gateway.AdminAuth.Username == "" || c.Gateway.AdminAuth.Password == "" {
+			return fmt.Errorf("admin_auth: method=basic requires non-empty username and password")
+		}
+	case "bearer":
+		if c.Gateway.AdminAuth.Token == "" {
+			return fmt.Errorf("admin_auth: method=bearer requires non-empty token")
+		}
+	default:
+		return fmt.Errorf("admin_auth: unknown method %q (allowed: none, basic, bearer)",
+			c.Gateway.AdminAuth.Method)
 	}
 
 	seenNames := make(map[string]bool)
@@ -296,6 +345,9 @@ func applyDefaults(cfg *GatewayConfig) {
 	}
 	if cfg.Gateway.DiscoveryInterval == 0 {
 		cfg.Gateway.DiscoveryInterval = 15 * time.Second
+	}
+	if cfg.Gateway.AdminAuth.Method == "" {
+		cfg.Gateway.AdminAuth.Method = "none"
 	}
 
 	for i := range cfg.Containers {

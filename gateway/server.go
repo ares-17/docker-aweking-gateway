@@ -63,12 +63,23 @@ func NewServer(manager *ContainerManager, cfg *GatewayConfig) (*Server, error) {
 // On cancellation it performs a graceful shutdown with a 15-second deadline.
 func (s *Server) Start(ctx context.Context) error {
 	mux := http.NewServeMux()
+
+	// ── Functional endpoints (NOT protected by auth) ──
 	mux.HandleFunc("/_health", s.handleHealth)
 	mux.HandleFunc("/_logs", s.handleLogs)
-	mux.HandleFunc("/_status", s.handleStatusPage)
-	mux.HandleFunc("/_status/api", s.handleStatusAPI)
-	mux.HandleFunc("/_status/wake", s.handleStatusWake)
-	mux.Handle("/_metrics", promhttp.Handler())
+
+	// ── Admin endpoints (protected by optional auth middleware) ──
+	authCfg := &s.GetConfig().Gateway.AdminAuth
+	mux.Handle("/_status", adminAuthMiddleware(
+		http.HandlerFunc(s.handleStatusPage), authCfg))
+	mux.Handle("/_status/api", adminAuthMiddleware(
+		http.HandlerFunc(s.handleStatusAPI), authCfg))
+	mux.Handle("/_status/wake", adminAuthMiddleware(
+		http.HandlerFunc(s.handleStatusWake), authCfg))
+	mux.Handle("/_metrics", adminAuthMiddleware(
+		promhttp.Handler(), authCfg))
+
+	// ── Catch-all ──
 	mux.HandleFunc("/", s.handleRequest)
 
 	s.httpServer = &http.Server{

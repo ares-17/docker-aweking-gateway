@@ -73,7 +73,17 @@ gateway:
     - "10.0.0.0/8"
     - "172.16.0.0/12"
     - "192.168.0.0/16"
+
+  # Optional authentication for admin endpoints (/_status/*, /_metrics)
+  admin_auth:
+    method: "basic"        # "none" (default), "basic", or "bearer"
+    username: "admin"      # Required for method=basic
+    password: "s3cret"     # Required for method=basic
+    # token: "my-token"    # Required for method=bearer
 ```
+
+> [!NOTE]
+> `admin_auth` settings can also be overridden via environment variables: `ADMIN_AUTH_METHOD`, `ADMIN_AUTH_USERNAME`, `ADMIN_AUTH_PASSWORD`, `ADMIN_AUTH_TOKEN`. These take priority over the YAML values.
 
 > [!NOTE]
 > If `trusted_proxies` is empty (default), the gateway **always uses `RemoteAddr`** for rate-limiting — `X-Forwarded-For` is ignored. This is the safest default, preventing IP spoofing attacks.

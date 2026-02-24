@@ -118,6 +118,9 @@ func TestApplyDefaults(t *testing.T) {
 				if cfg.Gateway.DiscoveryInterval != 15*time.Second {
 					t.Errorf("DiscoveryInterval = %v, want %v", cfg.Gateway.DiscoveryInterval, 15*time.Second)
 				}
+				if cfg.Gateway.AdminAuth.Method != "none" {
+					t.Errorf("AdminAuth.Method = %q, want %q", cfg.Gateway.AdminAuth.Method, "none")
+				}
 			},
 		},
 		{
@@ -285,6 +288,55 @@ func TestValidate(t *testing.T) {
 				cfg.Containers = nil
 			},
 			wantErr: false,
+		},
+		{
+			name: "admin_auth method=none → valid",
+			modify: func(cfg *GatewayConfig) {
+				cfg.Gateway.AdminAuth = AdminAuthConfig{Method: "none"}
+			},
+			wantErr: false,
+		},
+		{
+			name: "admin_auth method=basic with credentials → valid",
+			modify: func(cfg *GatewayConfig) {
+				cfg.Gateway.AdminAuth = AdminAuthConfig{Method: "basic", Username: "admin", Password: "pass"}
+			},
+			wantErr: false,
+		},
+		{
+			name: "admin_auth method=basic without username → error",
+			modify: func(cfg *GatewayConfig) {
+				cfg.Gateway.AdminAuth = AdminAuthConfig{Method: "basic", Password: "pass"}
+			},
+			wantErr: true,
+		},
+		{
+			name: "admin_auth method=basic without password → error",
+			modify: func(cfg *GatewayConfig) {
+				cfg.Gateway.AdminAuth = AdminAuthConfig{Method: "basic", Username: "admin"}
+			},
+			wantErr: true,
+		},
+		{
+			name: "admin_auth method=bearer with token → valid",
+			modify: func(cfg *GatewayConfig) {
+				cfg.Gateway.AdminAuth = AdminAuthConfig{Method: "bearer", Token: "secret"}
+			},
+			wantErr: false,
+		},
+		{
+			name: "admin_auth method=bearer without token → error",
+			modify: func(cfg *GatewayConfig) {
+				cfg.Gateway.AdminAuth = AdminAuthConfig{Method: "bearer"}
+			},
+			wantErr: true,
+		},
+		{
+			name: "admin_auth unknown method → error",
+			modify: func(cfg *GatewayConfig) {
+				cfg.Gateway.AdminAuth = AdminAuthConfig{Method: "oauth2"}
+			},
+			wantErr: true,
 		},
 	}
 
