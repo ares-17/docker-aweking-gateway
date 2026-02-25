@@ -21,11 +21,8 @@ vendor/
 *.prof
 *.out
 
-# Mockups — exclude Stitch source HTML and unused screenshots,
-# but keep the two PNGs referenced in README.md
-mockups/**/code.html
-mockups/**/*.png
-
+# Mockups
+mockups/
 .agent/
 .agents/
 skills-lock.json
