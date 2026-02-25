@@ -1,4 +1,4 @@
-title: Docker Awakening Gateway
+title: DAG
 description: >-
   An ultra-lightweight reverse proxy that wakes up sleeping Docker containers
   on demand — with a live loading page, idle auto-stop, and zero overhead proxying.
@@ -9,7 +9,7 @@ remote_theme: just-the-docs/just-the-docs@v0.10.0
 # baseurl: "/docker-gateway"
 
 # Site color
-color_scheme: dark
+color_scheme: light
 
 # Aux links in the top nav
 aux_links:
