@@ -1,5 +1,10 @@
 # Docker Awakening Gateway
 
+<p align="center">
+  <img src="https://img.shields.io/badge/go-%2300ADD8.svg?style=for-the-badge&logo=go&logoColor=white" alt="Go">
+  <img src="https://img.shields.io/badge/docker-%230db7ed.svg?style=for-the-badge&logo=docker&logoColor=white" alt="Docker">
+</p>
+
 An ultra-lightweight reverse proxy that **wakes up stopped Docker containers on demand**. When a request arrives for a sleeping container, the gateway shows an animated loading page with live logs, starts the container, and transparently proxies once it's ready.
 
 Built as a single static Go binary — ideal for home labs, edge devices, and resource-constrained environments. Final image: **~22 MB** (distroless).
@@ -19,13 +24,11 @@ Built as a single static Go binary — ideal for home labs, edge devices, and re
 </tr>
 </table>
 
-<div align="center">
-  <br>
-  <a href="https://ares-17.github.io/docker-aweking-gateway/" style="display: inline-block; padding: 8px 16px; background-color: #2a788eff; color: #ffffff; font-size: 16px; font-weight: bold; text-decoration: none; border-radius: 6px; border: 1px solid rgba(27,31,35,0.15);">
-    📖 Read the documentation »
+<p align="center">
+  <a href="https://ares-17.github.io/docker-aweking-gateway/">
+    <img src="https://img.shields.io/badge/📖_Read_the_documentation_»-2a788e?style=for-the-badge" alt="Read the documentation" />
   </a>
-  <br><br>
-</div>
+</p>
 
 
 
