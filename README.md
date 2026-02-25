@@ -25,57 +25,103 @@ Built as a single static Go binary — ideal for home labs, edge devices, and re
 
 ## How it works
 
+### Request routing
+
+```mermaid
+---
+config:
+  theme: neutral
+  flowchart:
+    curve: basis
+---
+flowchart TD
+    A([HTTP Request\nHost: my-app.example.com]) --> B
+
+    B{Host lookup\nO&lpar;1&rpar;}
+    B -->|No match| C[404 Not Found]
+    B -->|Group host| D[Round-robin pick\nmember container]
+    B -->|Container host| E{Container\nrunning?}
+
+    D --> E
+
+    E -->|Yes| F{Dependencies\nall running?}
+    F -->|Yes| G[RecordActivity]
+    G --> H[Reverse Proxy\nHTTP · WebSocket]
+    H --> Z([✅ Response])
+
+    F -->|No| I
+    E -->|No| I[Serve loading page\nlive log stream]
+
+    I --> J[async: docker start\nreadiness probe\nTCP · HTTP /healthz]
+    J --> K[Browser polls /_health\nevery 2 s]
+    K --> L([✅ Redirect to redirect_path])
+
+    style C fill:#c0392b,color:#fff
+    style Z fill:#27ae60,color:#fff
+    style L fill:#27ae60,color:#fff
+    style I fill:#2980b9,color:#fff
+    style J fill:#2980b9,color:#fff
 ```
-  ┌─────────────────────────────────────────────────────────────┐
-  │                   Incoming HTTP Request                      │
-  │              Host: my-app.example.com                        │
-  └───────────────────────────┬─────────────────────────────────┘
-                              │
-                    ┌─────────▼──────────┐
-                    │   DAG Gateway      │  ← single Go binary
-                    │  Host → Container  │    O(1) lookup
-                    └─────────┬──────────┘
-                              │
-              ┌───────────────┼───────────────┐
-              │                               │
-    ┌─────────▼─────────┐         ┌───────────▼──────────┐
-    │  Container RUNNING │         │  Container STOPPED    │
-    └─────────┬──────────┘         └───────────┬──────────┘
-              │                               │
-    RecordActivity                  ┌──────────▼──────────┐
-              │                     │   Serve loading page │
-    ┌─────────▼──────────┐          │   (live log stream)  │
-    │   Reverse Proxy    │          └──────────┬──────────┘
-    │  HTTP + WebSocket  │                     │ async
-    └─────────┬──────────┘          ┌──────────▼──────────┐
-              │                     │   docker start       │
-              ▼                     │   readiness probe    │
-         ✅ Response                │   TCP / HTTP /healthz│
-                                    └──────────┬──────────┘
-                                               │
-                                    ┌──────────▼──────────┐
-                                    │  browser polls       │
-                                    │  /_health every 2s   │
-                                    └──────────┬──────────┘
-                                               │
-                                    ┌──────────▼──────────┐
-                                    │  redirect_path  ✅  │
-                                    └─────────────────────┘
 
-  ┌──────────────────────────────────────────────────────────────┐
-  │  Auto-Discovery (background, every 15 s)                     │
-  │                                                              │
-  │  Docker daemon ──labels──► DAG polls ──merge──► host index   │
-  │  dag.enabled=true            Static config.yaml wins on      │
-  │  dag.host=my-app.local       host conflicts                  │
-  └──────────────────────────────────────────────────────────────┘
+### Awakening sequence
 
-  ┌──────────────────────────────────────────────────────────────┐
-  │  Idle watcher (background, every 60 s)                       │
-  │                                                              │
-  │  last_request > idle_timeout?  ──YES──► docker stop          │
-  │  next request arrives          ──────► restart cycle         │
-  └──────────────────────────────────────────────────────────────┘
+```mermaid
+sequenceDiagram
+    actor Browser
+    participant GW as DAG Gateway
+    participant Docker
+    participant App as Container App
+
+    Browser->>GW: GET my-app.example.com/
+    GW->>Docker: ContainerInspect(my-app)
+    Docker-->>GW: status = "exited"
+
+    GW-->>Browser: 200 Loading page (HTML + JS)
+    Note over GW: async goroutine starts
+
+    GW->>Docker: ContainerStart(my-app)
+    Docker-->>GW: OK
+
+    loop Readiness probe (every 500ms)
+        GW->>App: TCP dial :3000 (or GET /healthz)
+        App-->>GW: connection refused / 503
+    end
+
+    App-->>GW: ✅ port open / 200 OK
+
+    loop Browser polls (every 2s)
+        Browser->>GW: GET /_health?container=my-app
+        GW-->>Browser: {"status":"running"}
+    end
+
+    Browser->>App: GET /redirect_path
+    App-->>Browser: ✅ 200 OK
+```
+
+### Background processes
+
+```mermaid
+flowchart LR
+    subgraph discovery ["🔍 Auto-Discovery  (every 15 s)"]
+        direction LR
+        DA[Docker daemon\nlabels] -->|dag.enabled=true| DB[DAG polls]
+        DB -->|merge| DC[Host index]
+        DC -->|static wins\non conflict| DC
+    end
+
+    subgraph idle ["😴 Idle Watcher  (every 60 s)"]
+        direction LR
+        IA{last request\n> idle_timeout?} -->|Yes| IB[docker stop]
+        IA -->|No| IC[skip]
+        IB --> ID[next request\n→ restart]
+    end
+
+    subgraph reload ["🔄 Hot-Reload  (SIGHUP)"]
+        direction LR
+        RA[docker kill -s HUP] --> RB[re-read config.yaml]
+        RB --> RC[immediate\ndiscovery pass]
+        RC --> RD[host index\nupdated]
+    end
 ```
 
 ---
