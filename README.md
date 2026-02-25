@@ -11,7 +11,7 @@ Built as a single static Go binary — ideal for home labs, edge devices, and re
 
 
 <p align="center">
-  <a href="https://ares-17.github.io/docker-aweking-gateway/">
+  <a href="https://ares-17.github.io/docker-awakening-gateway/">
     <img src="https://img.shields.io/badge/📖_Read_the_documentation_»-2a788e?style=for-the-badge" alt="Read the documentation" />
   </a>
 </p>
