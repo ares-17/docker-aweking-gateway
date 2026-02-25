@@ -484,12 +484,10 @@ func setForwardedHeaders(r *http.Request, serverIP string) {
 		r.Header.Set("X-Real-IP", clientIP)
 	}
 
-	// X-Forwarded-Proto
-	proto := "http"
-	if r.TLS != nil {
-		proto = "https"
+	// X-Forwarded-Proto: respect existing upstream value (not overwritten if already set)
+	if r.Header.Get("X-Forwarded-Proto") == "" {
+		r.Header.Set("X-Forwarded-Proto", "http")
 	}
-	r.Header.Set("X-Forwarded-Proto", proto)
 	r.Header.Set("X-Forwarded-Host", r.Host)
 }
 

@@ -85,10 +85,10 @@
 
 ## 🔭 Long-term
 
+- [x] **Container grouping / round-robin routing** — start a group of containers, load-balance across replicas
+- [ ] **Weighted load balancing** — support `strategy: weighted` with per-container relative weights
 - [ ] **Multi-instance / distributed state** — share `startStates` and `lastSeen` via Redis or etcd for horizontal scaling
 - [ ] **Built-in TLS termination** — ACME/Let's Encrypt via `golang.org/x/crypto/acme/autocert`
-- [x] **Container grouping / weighted routing** — start a group of containers, load-balance across replicas
-- [ ] **Admin UI** — lightweight web interface to view states, force wake/sleep, view logs, edit config
 
 ## Known Limitations (by design)
 

@@ -124,6 +124,18 @@ func TestSetForwardedHeaders(t *testing.T) {
 			t.Errorf("X-Real-IP = %q, should remain %q", got, "original-ip")
 		}
 	})
+
+	t.Run("does not overwrite existing X-Forwarded-Proto", func(t *testing.T) {
+		r := httptest.NewRequest(http.MethodGet, "/", nil)
+		r.RemoteAddr = "10.0.0.1:9999"
+		r.Header.Set("X-Forwarded-Proto", "https")
+
+		setForwardedHeaders(r, "10.0.0.5")
+
+		if got := r.Header.Get("X-Forwarded-Proto"); got != "https" {
+			t.Errorf("X-Forwarded-Proto = %q, should remain %q", got, "https")
+		}
+	})
 }
 
 // ─── requestID ────────────────────────────────────────────────────────────────
