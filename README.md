@@ -4,8 +4,6 @@ An ultra-lightweight reverse proxy that **wakes up stopped Docker containers on 
 
 Built as a single static Go binary — ideal for home labs, edge devices, and resource-constrained environments. Final image: **~22 MB** (distroless).
 
-[**📖 Read the documentation »**](https://ares-17.github.io/docker-aweking-gateway/)
-
 ---
 
 <table>
@@ -21,11 +19,17 @@ Built as a single static Go binary — ideal for home labs, edge devices, and re
 </tr>
 </table>
 
----
+<div align="center">
+  <br>
+  <a href="https://ares-17.github.io/docker-aweking-gateway/" style="display: inline-block; padding: 8px 16px; background-color: #2a788eff; color: #ffffff; font-size: 16px; font-weight: bold; text-decoration: none; border-radius: 6px; border: 1px solid rgba(27,31,35,0.15);">
+    📖 Read the documentation »
+  </a>
+  <br><br>
+</div>
 
-## How it works
 
-### Awakening sequence
+
+## How Awakening sequence works
 
 ```mermaid
 sequenceDiagram
