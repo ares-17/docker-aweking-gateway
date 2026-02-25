@@ -14,7 +14,7 @@ color_scheme: light
 # Aux links in the top nav
 aux_links:
   "GitHub":
-    - "https://github.com/aress/docker-awakening-gateway"
+    - "https://github.com/ares-17/docker-awakening-gateway"
 
 aux_links_new_tab: true
 
