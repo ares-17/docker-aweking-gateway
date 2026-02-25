@@ -1,3 +1,8 @@
+---
+title: Groups & Dependencies
+nav_order: 8
+---
+
 # Container Grouping, Dependencies & Load Balancing
 
 The gateway supports **dependency-ordered startup** and **round-robin load balancing** across container groups. These features let you model production-like topologies (e.g., a web app that depends on a database, or an API cluster with multiple replicas behind one host).

@@ -1,3 +1,8 @@
+---
+title: Prometheus Monitoring
+nav_order: 10
+---
+
 # Prometheus Monitoring Guide
 
 The Docker Awakening Gateway natively exposes application telemetrics via a standard Prometheus `/_metrics` endpoint. This allows administrators to monitor gateway performance, container awakening activity, and resource optimization (idle shutdowns) globally or per-container.

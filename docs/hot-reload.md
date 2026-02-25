@@ -1,3 +1,8 @@
+---
+title: Hot-Reload
+nav_order: 7
+---
+
 # Configuration Hot-Reload
 
 The Docker Awakening Gateway supports updating its routing configuration at runtime without process restarts or dropping active connections.

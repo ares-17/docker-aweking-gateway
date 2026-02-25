@@ -1,3 +1,8 @@
+---
+title: Testing
+nav_order: 11
+---
+
 # Testing Guide
 
 The Docker Awakening Gateway includes a comprehensive test suite written in pure Go, using only the standard library (`testing`, `net/http/httptest`). No external testing frameworks or dependencies are required.

@@ -1,49 +1,53 @@
-# Configuration Guide
+---
+title: Configuration
+nav_order: 4
+---
 
-The Docker Awakening Gateway provides two distinct ways to manage the containers it wakes up and proxies traffic to: **Label-based Auto-Discovery** and **Static Configuration**. 
+# Configuration Reference
+{: .no_toc }
 
-You can use either method exclusively, or combine them together. When combined, the static configuration always takes precedence in case of identical host mapping.
+<details open markdown="block">
+  <summary>Contents</summary>
+  {: .text-delta }
+- TOC
+{:toc}
+</details>
+
+The Docker Awakening Gateway provides two distinct ways to manage containers: **Label-based Auto-Discovery** and **Static Configuration**. You can use either method exclusively, or combine them — static definitions always win on host conflicts.
 
 ---
 
 ## 1. Label-based Auto-Discovery (Recommended)
 
-The easiest and most dynamic way to configure the gateway is by attaching Docker labels directly to your application's `docker-compose.yml` or container run command.
-
-The gateway periodically polls the Docker daemon (every 15 seconds) to find any containers (running or stopped) that have the `dag.enabled=true` label.
+Attach Docker labels directly to your containers. The gateway polls the Docker daemon every `discovery_interval` (default: 15 s) for containers carrying `dag.enabled=true`.
 
 ### Required Labels
 
-To make a container discoverable, it **must** have these two labels:
-
 | Label | Example | Description |
 |-------|---------|-------------|
-| `dag.enabled` | `true` | Tells the gateway to manage this container. |
-| `dag.host` | `app.example.com` | The exact `Host` HTTP header to match incoming traffic against. |
+| `dag.enabled` | `true` | Tells the gateway to manage this container |
+| `dag.host` | `app.example.com` | `Host` header to match incoming traffic against |
 
 ### Optional Labels
 
-You can fine-tune the container behavior by adding any of these optional labels:
-
 | Label | Default | Description |
 |-------|---------|-------------|
-| `dag.target_port` | `80` | The internal port the container listens on (e.g., `8080`, `3000`). |
-| `dag.start_timeout` | `60s` | Maximum time to wait for the container to start and boot before showing an error page. |
-| `dag.idle_timeout`  | `0` (Disabled)| Time of inactivity (no HTTP requests) before the gateway automatically stops the container to save resources (e.g., `15m`, `1h`). |
-| `dag.network` | `""` | The specific Docker network to look for the container IP on. If empty, the first attached network is used. |
-| `dag.redirect_path` | `/` | The URL path to redirect the user to once the container successfully boots. |
-| `dag.icon` | `docker` | A [Simple Icons](https://simpleicons.org/) slug (e.g., `nginx`, `redis`) used for the `/_status` dashboard. |
-| `dag.health_path` | `""` | HTTP endpoint (e.g., `/healthz`) called instead of TCP dial to confirm readiness. |
-| `dag.depends_on` | `""` | Comma-separated list of container names that must be running first (e.g., `postgres,redis`). |
+| `dag.target_port` | `80` | Port the container listens on |
+| `dag.start_timeout` | `60s` | Max time to wait for container boot before error page |
+| `dag.idle_timeout` | `0` (disabled) | Inactivity time before auto-stop (e.g. `15m`, `1h`) |
+| `dag.network` | `""` | Docker network to resolve container IP from |
+| `dag.redirect_path` | `/` | URL path to redirect to after successful boot |
+| `dag.icon` | `docker` | [Simple Icons](https://simpleicons.org/) slug for the `/_status` dashboard |
+| `dag.health_path` | `""` | HTTP path (e.g. `/healthz`) for readiness probe instead of TCP |
+| `dag.depends_on` | `""` | Comma-separated container names to start first (e.g. `postgres,redis`) |
 
-### Example `docker-compose.yml`
+### Example
 
 ```yaml
 services:
   my-app:
     image: my-app:latest
     container_name: my-app
-    # No ports exposed directly! The gateway handles traffic.
     labels:
       - "dag.enabled=true"
       - "dag.host=my-app.localhost"
@@ -51,46 +55,73 @@ services:
       - "dag.start_timeout=120s"
       - "dag.idle_timeout=30m"
       - "dag.icon=nodedotjs"
+      - "dag.health_path=/healthz"
 ```
 
 ---
 
 ## 2. Static Configuration (`config.yaml`)
 
-Static configuration is useful when you want all route definitions centralized in a single file, or if you need to configure global gateway settings. 
+The gateway loads `config.yaml` from `/etc/gateway/config.yaml` by default. Override the path with the `CONFIG_PATH` environment variable.
 
-The gateway expects a YAML file mounted at `/etc/gateway/config.yaml` (you can override this path using the `CONFIG_PATH` environment variable).
-
-### Global Settings
-
-The `config.yaml` file is the **only** place where you can configure global gateway behavior:
+### Global Settings (`gateway:`)
 
 ```yaml
 gateway:
-  port: "8080"        # Port the gateway proxy listens on
-  log_lines: 30       # Number of container log lines shown in the browser loading UI
-  trusted_proxies:    # CIDR blocks whose X-Forwarded-For is trusted for rate limiting (default: [])
+  port: "8080"              # Listening port (default: 8080)
+  log_lines: 30             # Log lines shown in the loading page UI
+  discovery_interval: "15s" # How often to poll Docker for labeled containers
+
+  trusted_proxies:          # CIDRs whose X-Forwarded-For is trusted for rate limiting
     - "10.0.0.0/8"
     - "172.16.0.0/12"
     - "192.168.0.0/16"
 
-  # Optional authentication for admin endpoints (/_status/*, /_metrics)
-  admin_auth:
-    method: "basic"        # "none" (default), "basic", or "bearer"
-    username: "admin"      # Required for method=basic
-    password: "s3cret"     # Required for method=basic
-    # token: "my-token"    # Required for method=bearer
+  admin_auth:               # Optional auth on /_status/* and /_metrics (see below)
+    method: "none"          # "none" (default), "basic", or "bearer"
 ```
 
 > [!NOTE]
-> `admin_auth` settings can also be overridden via environment variables: `ADMIN_AUTH_METHOD`, `ADMIN_AUTH_USERNAME`, `ADMIN_AUTH_PASSWORD`, `ADMIN_AUTH_TOKEN`. These take priority over the YAML values.
+> `gateway.port` and `admin_auth` settings are **not hot-reloaded** — a container restart is required to change them. All other settings are applied on `SIGHUP`.
 
-> [!NOTE]
-> If `trusted_proxies` is empty (default), the gateway **always uses `RemoteAddr`** for rate-limiting — `X-Forwarded-For` is ignored. This is the safest default, preventing IP spoofing attacks.
+#### Admin Auth
+{: #admin-auth }
 
-### Static Container Definitions
+Protect the admin and metrics endpoints with authentication:
 
-You define targets in the `containers` array. The fields map exactly to their label counterparts.
+**Basic Auth (browser login dialog):**
+
+```yaml
+gateway:
+  admin_auth:
+    method: "basic"
+    username: "admin"
+    password: "s3cret-passw0rd"
+```
+
+**Bearer Token (Prometheus / automation):**
+
+```yaml
+gateway:
+  admin_auth:
+    method: "bearer"
+    token: "my-super-secret-token"
+```
+
+**Environment variable overrides** (higher priority than YAML):
+
+| Variable | Description |
+|----------|-------------|
+| `ADMIN_AUTH_METHOD` | `none`, `basic`, or `bearer` |
+| `ADMIN_AUTH_USERNAME` | Username (required for `basic`) |
+| `ADMIN_AUTH_PASSWORD` | Password (required for `basic`) |
+| `ADMIN_AUTH_TOKEN` | Token (required for `bearer`) |
+
+See **[Security →](security.md)** for full details, protected endpoints, and usage examples.
+
+---
+
+### Static Container Definitions (`containers:`)
 
 ```yaml
 containers:
@@ -98,42 +129,49 @@ containers:
     host: "my-app.example.com"   # (Required) Host header to match
     target_port: "3000"          # (Default: 80)
     start_timeout: "120s"        # (Default: 60s)
-    idle_timeout: "30m"          # (Default: 0)
-    network: "backend-net"       # (Default: "")
+    idle_timeout: "30m"          # (Default: 0 — disabled)
+    network: "backend-net"       # (Default: "" — first attached network)
     redirect_path: "/login"      # (Default: /)
     icon: "postgresql"           # (Default: docker)
-    health_path: "/healthz"      # (Default: "" → TCP probe)
+    health_path: "/healthz"      # (Default: "" — TCP probe)
     depends_on: ["postgres"]     # (Default: [])
 ```
 
-### Container Groups
+---
 
-You can define load-balanced groups in the `groups` array. See [Groups & Dependencies](groups-and-dependencies.md) for full details.
+### Container Groups (`groups:`)
+
+Groups map a single host to multiple containers for **round-robin load balancing**:
 
 ```yaml
 groups:
-  - name: "api-cluster"          # (Required) Unique group name
-    host: "api.example.com"      # (Required) Host header to match
-    strategy: "round-robin"      # (Default: round-robin)
+  - name: "api-cluster"
+    host: "api.example.com"
+    strategy: "round-robin"        # (Default: round-robin)
     containers: ["api-1", "api-2", "api-3"]
 ```
 
-### Hot-Reloading
+See **[Groups & Dependencies →](groups-and-dependencies.md)** for full documentation.
 
-A major advantage of the `config.yaml` approach is **Hot-Reloading**. If you edit the `config.yaml` file on disk, you can tell the gateway to reload its configuration without dropping any active connections by sending a `SIGHUP` signal:
+---
+
+## Hot-Reloading
+
+Send `SIGHUP` to reload `config.yaml` without dropping connections:
 
 ```bash
 docker kill -s HUP docker-gateway
 ```
 
-*(Note: Sending a `SIGHUP` also forces an immediate auto-discovery polling pass for labels, instead of waiting for the next 15-second tick).*
+See **[Hot-Reload →](hot-reload.md)** for what is and isn't reloaded.
 
 ---
 
 ## Mixing Both Methods
 
-You can freely mix both configurations:
-- Use `config.yaml` just for the `gateway:` block, and use labels for all your dynamic containers.
-- Statically define your critical core containers in `config.yaml`, but let temporary/testing apps join via labels.
+You can freely mix static config and label discovery:
 
-**Conflict Resolution:** If a container is defined both in `config.yaml` and via labels (e.g., both try to claim the `Host: app.example.com`), the **Static Configuration always wins**, and the conflicting discovered label will be skipped and logged.
+- Use `config.yaml` only for the `gateway:` global block; let containers auto-discover via labels.
+- Define critical containers statically in `config.yaml`; let development containers join via labels.
+
+**Conflict resolution:** If the same `Host` is claimed both in `config.yaml` and via a label, the **static definition wins** and the label conflict is logged and skipped.

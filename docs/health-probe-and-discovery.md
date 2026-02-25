@@ -1,3 +1,8 @@
+---
+title: Health Probe & Discovery
+nav_order: 9
+---
+
 # HTTP Health Probe & Configurable Discovery Interval
 
 Two features that improve container readiness detection and give operators control over the auto-discovery polling frequency.

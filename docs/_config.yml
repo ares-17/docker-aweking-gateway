@@ -1,0 +1,34 @@
+title: Docker Awakening Gateway
+description: >-
+  An ultra-lightweight reverse proxy that wakes up sleeping Docker containers
+  on demand — with a live loading page, idle auto-stop, and zero overhead proxying.
+
+# GitHub Pages / Just the Docs theme
+remote_theme: just-the-docs/just-the-docs@v0.10.0
+# If publishing to github.com/<user>/docker-gateway, set baseurl:
+# baseurl: "/docker-gateway"
+
+# Site color
+color_scheme: dark
+
+# Aux links in the top nav
+aux_links:
+  "GitHub":
+    - "https://github.com/aress/docker-gateway"
+
+aux_links_new_tab: true
+
+# Search
+search_enabled: true
+
+# Footer
+footer_content: "Docker Awakening Gateway — MIT License"
+
+# Exclude internal/dev files from the built site
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - "*.sh"
+  - ROADMAP_AUDIT.md
+  - PROJECT_PLAN.md
+  - claude.md
