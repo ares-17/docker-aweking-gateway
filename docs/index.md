@@ -4,7 +4,7 @@ title: Home
 nav_order: 1
 ---
 
-# Docker Awakening Gateway 🐳💤→⚡
+# Docker Awakening Gateway
 {: .fs-9 }
 
 An ultra-lightweight reverse proxy that **wakes sleeping Docker containers on demand** — with a live loading page, idle auto-stop, and zero-overhead proxying once the container is up.
@@ -14,6 +14,17 @@ An ultra-lightweight reverse proxy that **wakes sleeping Docker containers on de
 [Configuration Reference](configuration.md){: .btn .fs-5 .mb-4 .mb-md-0 }
 
 ---
+
+<table>
+<tr>
+<td width="50%">
+<img src="assets/images/awakening-dark.png" alt="Loading page — container awakening" />
+</td>
+<td width="50%">
+<img src="assets/images/dashboard-dark.png" alt="Admin status dashboard" />
+</td>
+</tr>
+</table>
 
 ## Why?
 

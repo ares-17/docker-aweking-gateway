@@ -11,11 +11,11 @@ Built as a single static Go binary — ideal for home labs, edge devices, and re
 <table>
 <tr>
 <td width="50%">
-<img src="mockups/awakening_state_dark/screen.png" alt="Loading page — container awakening" />
+<img src="docs/assets/images/awakening-dark.png" alt="Loading page — container awakening" />
 <p align="center"><sub>Loading page with live log stream while the container boots</sub></p>
 </td>
 <td width="50%">
-<img src="mockups/container_dashboard_dark_mode/screen.png" alt="Admin status dashboard" />
+<img src="docs/assets/images/dashboard-dark.png" alt="Admin status dashboard" />
 <p align="center"><sub><code>/_status</code> admin dashboard — live heartbeat, uptime, idle timeouts</sub></p>
 </td>
 </tr>
@@ -24,44 +24,6 @@ Built as a single static Go binary — ideal for home labs, edge devices, and re
 ---
 
 ## How it works
-
-### Request routing
-
-```mermaid
----
-config:
-  theme: neutral
-  flowchart:
-    curve: basis
----
-flowchart TD
-    A([HTTP Request\nHost: my-app.example.com]) --> B
-
-    B{Host lookup\nO&lpar;1&rpar;}
-    B -->|No match| C[404 Not Found]
-    B -->|Group host| D[Round-robin pick\nmember container]
-    B -->|Container host| E{Container\nrunning?}
-
-    D --> E
-
-    E -->|Yes| F{Dependencies\nall running?}
-    F -->|Yes| G[RecordActivity]
-    G --> H[Reverse Proxy\nHTTP · WebSocket]
-    H --> Z([✅ Response])
-
-    F -->|No| I
-    E -->|No| I[Serve loading page\nlive log stream]
-
-    I --> J[async: docker start\nreadiness probe\nTCP · HTTP /healthz]
-    J --> K[Browser polls /_health\nevery 2 s]
-    K --> L([✅ Redirect to redirect_path])
-
-    style C fill:#c0392b,color:#fff
-    style Z fill:#27ae60,color:#fff
-    style L fill:#27ae60,color:#fff
-    style I fill:#2980b9,color:#fff
-    style J fill:#2980b9,color:#fff
-```
 
 ### Awakening sequence
 
@@ -97,35 +59,6 @@ sequenceDiagram
     Browser->>App: GET /redirect_path
     App-->>Browser: ✅ 200 OK
 ```
-
-### Background processes
-
-```mermaid
-flowchart LR
-    subgraph discovery ["🔍 Auto-Discovery  (every 15 s)"]
-        direction LR
-        DA[Docker daemon\nlabels] -->|dag.enabled=true| DB[DAG polls]
-        DB -->|merge| DC[Host index]
-        DC -->|static wins\non conflict| DC
-    end
-
-    subgraph idle ["😴 Idle Watcher  (every 60 s)"]
-        direction LR
-        IA{last request\n> idle_timeout?} -->|Yes| IB[docker stop]
-        IA -->|No| IC[skip]
-        IB --> ID[next request\n→ restart]
-    end
-
-    subgraph reload ["🔄 Hot-Reload  (SIGHUP)"]
-        direction LR
-        RA[docker kill -s HUP] --> RB[re-read config.yaml]
-        RB --> RC[immediate\ndiscovery pass]
-        RC --> RD[host index\nupdated]
-    end
-```
-
----
-
 ## Configuration
 
 The gateway can be configured in two complementary ways — use either or both:
