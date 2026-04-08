@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+  <title>Offline — {{ .ContainerName }}</title>
+  <link href="https://fonts.googleapis.com" rel="preconnect" />
+  <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@300;400;500;600;700&display=swap"
+    rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            "bg-dark": "#0d1117",
+            "surface-dark": "#161b22",
+            "text-main": "#c9d1d9",
+            "text-muted": "#8b949e",
+            "border-dark": "#30363d",
+            "offline-red": "#f85149",
+            "offline-surface": "#1a0d0d",
+          },
+          fontFamily: {
+            "display": ["Space Grotesk", "sans-serif"],
+            "mono": ["JetBrains Mono", "monospace"],
+          },
+          backgroundImage: {
+            'technical-grid': "linear-gradient(to right, rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.05) 1px, transparent 1px)",
+          },
+        },
+      },
+    }
+  </script>
+  <style>
+    .bg-grid-pattern { background-size: 20px 20px; }
+  </style>
+</head>
+
+<body
+  class="bg-bg-dark text-text-main font-display min-h-screen flex flex-col overflow-hidden relative selection:bg-offline-red selection:text-white antialiased">
+  <div class="absolute inset-0 bg-technical-grid bg-grid-pattern z-0 pointer-events-none"></div>
+
+  <div class="relative z-10 flex flex-col items-center justify-center flex-grow w-full h-full p-4 sm:p-6">
+    <div class="w-full max-w-[600px] bg-surface-dark border border-border-dark rounded shadow-lg overflow-hidden">
+
+      {{/* ── Header ───────────────────────────────────────────── */}}
+      <div class="px-6 py-5 border-b border-border-dark flex items-center justify-between">
+        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-bg-dark border border-offline-red/40">
+          <span class="relative flex h-2 w-2">
+            <span class="relative inline-flex rounded-full h-2 w-2 bg-offline-red"></span>
+          </span>
+          <span class="font-mono text-xs font-medium tracking-wide text-offline-red">STATUS: OFFLINE</span>
+        </div>
+        <div class="hidden sm:flex gap-1.5 opacity-20">
+          <div class="w-2.5 h-2.5 rounded-full bg-text-main"></div>
+          <div class="w-2.5 h-2.5 rounded-full bg-text-main"></div>
+          <div class="w-2.5 h-2.5 rounded-full bg-text-main"></div>
+        </div>
+      </div>
+
+      {{/* ── Main area ─────────────────────────────────────────── */}}
+      <div class="p-8 sm:p-10 flex flex-col items-center text-center">
+
+        {{/* Container icon — static, red-tinted */}}
+        <div class="mb-8 relative">
+          <div
+            class="w-16 h-16 border-2 border-offline-red/50 flex flex-wrap content-center justify-center gap-1 p-1 bg-surface-dark relative z-10">
+            <div class="w-1 h-1 bg-offline-red/60 rounded-[1px]"></div>
+            <div class="w-1 h-1 bg-offline-red/40 rounded-[1px]"></div>
+            <div class="w-1 h-1 bg-offline-red/60 rounded-[1px]"></div>
+            <div class="w-1 h-1 bg-offline-red/40 rounded-[1px]"></div>
+            <div class="w-1 h-1 bg-offline-red/60 rounded-[1px]"></div>
+            <div class="w-1 h-1 bg-offline-red/40 rounded-[1px]"></div>
+          </div>
+          <div
+            class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[1px] h-[160%] bg-border-dark -z-0">
+          </div>
+          <div
+            class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[160%] h-[1px] bg-border-dark -z-0">
+          </div>
+        </div>
+
+        <h1 class="text-xl sm:text-2xl font-semibold leading-tight mb-2 text-text-main tracking-tight">
+          Container <span class="font-mono text-offline-red text-lg sm:text-xl">[{{ .ContainerName }}]</span> is offline
+        </h1>
+        <p class="font-mono text-xs sm:text-sm text-text-muted mb-6">
+          This service is not available right now
+        </p>
+
+        {{/* Offline info box */}}
+        <div class="w-full bg-offline-surface border border-offline-red/30 rounded-sm p-5 text-left">
+          <div class="flex items-center gap-2 mb-3">
+            <svg class="w-4 h-4 text-offline-red flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span class="font-mono text-xs font-bold text-offline-red uppercase tracking-wider">Scheduled Downtime</span>
+          </div>
+          {{ if .NextStart }}
+          <p class="font-mono text-xs text-text-muted">
+            Next scheduled start:
+            <span class="text-text-main font-medium">{{ .NextStart }}</span>
+          </p>
+          {{ else }}
+          <p class="font-mono text-xs text-text-muted">No upcoming start scheduled.</p>
+          {{ end }}
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  {{/* Footer */}}
+  <div class="fixed bottom-0 left-0 w-full py-4 px-6 text-center sm:text-left bg-transparent z-20 pointer-events-none">
+    <p class="font-mono text-[10px] text-text-muted opacity-50 uppercase tracking-wider">
+      docker awakening gateway <span class="mx-2 text-border-dark">|</span> access blocked by schedule
+    </p>
+  </div>
+
+</body>
+</html>
