@@ -147,6 +147,13 @@ func (d *DockerClient) DiscoverLabeledContainers(ctx context.Context) ([]Contain
 			}
 		}
 
+		if val, ok := c.Labels["dag.schedule_start"]; ok && val != "" {
+			cfg.ScheduleStart = val
+		}
+		if val, ok := c.Labels["dag.schedule_stop"]; ok && val != "" {
+			cfg.ScheduleStop = val
+		}
+
 		configs = append(configs, cfg)
 	}
 

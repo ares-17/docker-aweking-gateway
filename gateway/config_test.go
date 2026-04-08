@@ -537,6 +537,48 @@ containers:
 	})
 }
 
+func TestScheduleConfigValidation(t *testing.T) {
+	base := func() *GatewayConfig {
+		return &GatewayConfig{
+			Gateway: GlobalConfig{Port: "8080", LogLines: 30,
+				DiscoveryInterval: 15 * time.Second,
+				AdminAuth:         AdminAuthConfig{Method: "none"}},
+			Containers: []ContainerConfig{
+				{Name: "app", Host: "app.local", TargetPort: "80",
+					StartTimeout: 60 * time.Second},
+			},
+		}
+	}
+
+	tests := []struct {
+		name          string
+		scheduleStart string
+		scheduleStop  string
+		wantErr       bool
+	}{
+		{"no schedule", "", "", false},
+		{"only start valid", "0 8 * * 1-5", "", false},
+		{"only stop valid", "", "0 18 * * 1-5", false},
+		{"both valid no overlap", "0 8 * * 1-5", "0 18 * * 1-5", false},
+		{"both valid overnight", "0 22 * * *", "0 6 * * *", false},
+		{"same minute conflict", "0 8 * * *", "0 8 * * *", true},
+		{"invalid start expr", "not-a-cron", "0 18 * * *", true},
+		{"invalid stop expr", "0 8 * * *", "not-a-cron", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := base()
+			cfg.Containers[0].ScheduleStart = tt.scheduleStart
+			cfg.Containers[0].ScheduleStop = tt.scheduleStop
+			err := cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 // ─── health_path in YAML ──────────────────────────────────────────────────────
 
 func TestLoadConfig_HealthPathField(t *testing.T) {

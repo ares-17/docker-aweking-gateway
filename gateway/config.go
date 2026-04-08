@@ -104,6 +104,13 @@ type ContainerConfig struct {
 	// Dependencies are started in topological order and must pass their readiness
 	// probe before the next one begins. (default: [])
 	DependsOn []string `yaml:"depends_on"`
+	// ScheduleStart is an optional standard 5-field cron expression (e.g. "0 8 * * 1-5")
+	// that triggers a proactive container start. When combined with ScheduleStop,
+	// requests outside the active window are blocked with a 503 page.
+	ScheduleStart string `yaml:"schedule_start"`
+	// ScheduleStop is an optional standard 5-field cron expression (e.g. "0 20 * * 1-5")
+	// that triggers a proactive container stop.
+	ScheduleStop string `yaml:"schedule_stop"`
 }
 
 // LoadConfig reads and parses the YAML config file.
@@ -237,6 +244,13 @@ func (c *GatewayConfig) Validate() error {
 			}
 			if dep == ctr.Name {
 				return fmt.Errorf("container %q cannot depend on itself", ctr.Name)
+			}
+		}
+
+		// Validate schedule expressions if present.
+		if ctr.ScheduleStart != "" || ctr.ScheduleStop != "" {
+			if err := validateScheduleCompatibility(ctr.ScheduleStart, ctr.ScheduleStop); err != nil {
+				return fmt.Errorf("container %q: %w", ctr.Name, err)
 			}
 		}
 	}
