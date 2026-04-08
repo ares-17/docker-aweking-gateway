@@ -35,8 +35,11 @@ func main() {
 	// Initialize Container Manager
 	manager := gateway.NewContainerManager(dockerClient)
 
+	// Initialize Cron Scheduler
+	scheduler := gateway.NewScheduleManager(dockerClient, manager)
+
 	// Initialize and start the HTTP server
-	server, err := gateway.NewServer(manager, cfg)
+	server, err := gateway.NewServer(manager, scheduler, cfg)
 	if err != nil {
 		slog.Error("failed to initialize server", "error", err)
 		os.Exit(1)
@@ -46,6 +49,11 @@ func main() {
 	discoveryManager := gateway.NewDiscoveryManager(dockerClient, cfg, server.ReloadConfig)
 	discoveryManager.Start(ctx, cfg.Gateway.DiscoveryInterval)
 	slog.Info("discovery started", "interval", cfg.Gateway.DiscoveryInterval)
+
+	// Start scheduler and register initial jobs.
+	scheduler.Start(ctx)
+	scheduler.Sync(cfg.Containers)
+	slog.Info("scheduler started")
 
 	// Start idle-watcher goroutine with a callback to get the latest config
 	manager.StartIdleWatcher(ctx, func() []gateway.ContainerConfig {

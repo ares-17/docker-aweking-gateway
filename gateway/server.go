@@ -37,10 +37,11 @@ type Server struct {
 	tmpl         *template.Template
 	rateLimiter  *rateLimiter
 	groupRouter  *GroupRouter
+	scheduler    *ScheduleManager
 	httpServer   *http.Server
 }
 
-func NewServer(manager *ContainerManager, cfg *GatewayConfig) (*Server, error) {
+func NewServer(manager *ContainerManager, scheduler *ScheduleManager, cfg *GatewayConfig) (*Server, error) {
 	tmpl, err := template.ParseFS(templatesFS, "templates/*.html")
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse templates: %w", err)
@@ -48,6 +49,7 @@ func NewServer(manager *ContainerManager, cfg *GatewayConfig) (*Server, error) {
 
 	return &Server{
 		manager:      manager,
+		scheduler:    scheduler,
 		cfg:          cfg,
 		hostIndex:    BuildHostIndex(cfg),
 		groupIndex:   BuildGroupHostIndex(cfg),
@@ -130,6 +132,7 @@ func (s *Server) ReloadConfig(newCfg *GatewayConfig) {
 	s.groupIndex = BuildGroupHostIndex(newCfg)
 	s.containerMap = BuildContainerMap(newCfg)
 	s.trustedCIDRs = parseTrustedProxies(newCfg.Gateway.TrustedProxies)
+	s.scheduler.Sync(newCfg.Containers)
 }
 
 // GetConfig safely retrieves the current configuration.
@@ -213,6 +216,12 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	cfg := s.resolveConfig(r)
 	if cfg == nil {
 		http.NotFound(w, r)
+		return
+	}
+
+	// Schedule gate: block access outside the configured cron window.
+	if allowed, nextStart := IsInScheduleWindow(cfg, time.Now()); !allowed {
+		s.serveScheduledPage(w, r, cfg, nextStart)
 		return
 	}
 
@@ -624,6 +633,11 @@ type errorData struct {
 	RequestPath   string
 }
 
+type scheduledData struct {
+	ContainerName string
+	NextStart     string // e.g. "Tue 14 Apr · 08:00" or empty
+}
+
 type statusPageData struct {
 	Version string
 }
@@ -663,6 +677,22 @@ func (s *Server) serveLoadingPage(w http.ResponseWriter, r *http.Request, cfg *C
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.tmpl.ExecuteTemplate(w, "loading.html", data); err != nil {
 		slog.Error("template render failed", "template", "loading", "error", err)
+	}
+}
+
+func (s *Server) serveScheduledPage(w http.ResponseWriter, r *http.Request, cfg *ContainerConfig, nextStart time.Time) {
+	next := ""
+	if !nextStart.IsZero() {
+		next = nextStart.UTC().Format("Mon 02 Jan · 15:04")
+	}
+	data := scheduledData{
+		ContainerName: cfg.Name,
+		NextStart:     next,
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusServiceUnavailable)
+	if err := s.tmpl.ExecuteTemplate(w, "scheduled.html", data); err != nil {
+		slog.Error("template render failed", "template", "scheduled", "error", err)
 	}
 }
 
