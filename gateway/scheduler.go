@@ -1,7 +1,10 @@
 package gateway
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/robfig/cron/v3"
@@ -105,5 +108,99 @@ func prevFiring(schedule cron.Schedule, now time.Time) (time.Time, bool) {
 			return t, true
 		}
 		t = next
+	}
+}
+
+// ScheduleManager registers and executes per-container cron start/stop jobs.
+// Call Sync on startup and on every config hot-reload.
+type ScheduleManager struct {
+	cron    *cron.Cron
+	client  *DockerClient
+	manager *ContainerManager
+
+	mu      sync.Mutex
+	entries map[string][]cron.EntryID // containerName → registered entry IDs
+}
+
+// NewScheduleManager creates a ScheduleManager. Call Start to begin execution.
+func NewScheduleManager(client *DockerClient, manager *ContainerManager) *ScheduleManager {
+	return &ScheduleManager{
+		cron:    cron.New(),
+		client:  client,
+		manager: manager,
+		entries: make(map[string][]cron.EntryID),
+	}
+}
+
+// Start begins executing registered cron jobs. Stops when ctx is cancelled.
+func (sm *ScheduleManager) Start(ctx context.Context) {
+	sm.cron.Start()
+	go func() {
+		<-ctx.Done()
+		sm.cron.Stop()
+	}()
+}
+
+// Sync diffs the registered cron entries against the provided container list.
+// It removes all existing entries and re-registers from scratch, making it
+// safe to call repeatedly on config hot-reloads.
+func (sm *ScheduleManager) Sync(containers []ContainerConfig) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	// Remove all existing entries.
+	for name, ids := range sm.entries {
+		for _, id := range ids {
+			sm.cron.Remove(id)
+		}
+		delete(sm.entries, name)
+	}
+
+	// Register entries for containers that have at least one schedule field.
+	for _, c := range containers {
+		if c.ScheduleStart == "" && c.ScheduleStop == "" {
+			continue
+		}
+		cfg := c // capture loop variable for closures
+		var ids []cron.EntryID
+
+		if cfg.ScheduleStart != "" {
+			id, err := sm.cron.AddFunc(cfg.ScheduleStart, func() {
+				ctx, cancel := context.WithTimeout(context.Background(), cfg.StartTimeout)
+				defer cancel()
+				sm.manager.InitStartState(cfg.Name)
+				if err := sm.manager.EnsureRunning(ctx, &cfg); err != nil {
+					slog.Error("scheduled start failed", "container", cfg.Name, "error", err)
+				} else {
+					slog.Info("scheduled start succeeded", "container", cfg.Name)
+				}
+			})
+			if err != nil {
+				slog.Error("failed to register schedule_start", "container", cfg.Name, "error", err)
+				continue
+			}
+			ids = append(ids, id)
+		}
+
+		if cfg.ScheduleStop != "" {
+			id, err := sm.cron.AddFunc(cfg.ScheduleStop, func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				if err := sm.client.StopContainer(ctx, cfg.Name); err != nil {
+					slog.Error("scheduled stop failed", "container", cfg.Name, "error", err)
+				} else {
+					slog.Info("scheduled stop succeeded", "container", cfg.Name)
+				}
+			})
+			if err != nil {
+				slog.Error("failed to register schedule_stop", "container", cfg.Name, "error", err)
+				continue
+			}
+			ids = append(ids, id)
+		}
+
+		if len(ids) > 0 {
+			sm.entries[cfg.Name] = ids
+		}
 	}
 }

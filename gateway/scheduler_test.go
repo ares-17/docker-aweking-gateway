@@ -5,6 +5,7 @@ import (
 	"time"
 )
 
+
 // ─── validateScheduleCompatibility ───────────────────────────────────────────
 
 func TestScheduleCompatibility(t *testing.T) {
@@ -120,4 +121,65 @@ func TestIsInScheduleWindow(t *testing.T) {
 			}
 		})
 	}
+}
+
+// ─── ScheduleManager ─────────────────────────────────────────────────────────
+
+func TestScheduleManagerSync(t *testing.T) {
+	sm := NewScheduleManager(nil, nil)
+	// Do NOT call Start — we only test entry registration, not execution.
+
+	t.Run("initial sync registers correct entries", func(t *testing.T) {
+		containers := []ContainerConfig{
+			{Name: "app", ScheduleStart: "0 8 * * *", ScheduleStop: "0 20 * * *", StartTimeout: 60 * time.Second},
+			{Name: "db", ScheduleStart: "0 7 * * *", StartTimeout: 30 * time.Second},
+			{Name: "cache"}, // no schedule
+		}
+		sm.Sync(containers)
+
+		// app has start+stop = 2 entries; db has start only = 1; cache = 0
+		if got := len(sm.cron.Entries()); got != 3 {
+			t.Errorf("expected 3 cron entries, got %d", got)
+		}
+		if _, ok := sm.entries["app"]; !ok {
+			t.Error("expected entries for 'app'")
+		}
+		if len(sm.entries["app"]) != 2 {
+			t.Errorf("expected 2 entries for 'app', got %d", len(sm.entries["app"]))
+		}
+		if _, ok := sm.entries["db"]; !ok {
+			t.Error("expected entry for 'db'")
+		}
+		if len(sm.entries["db"]) != 1 {
+			t.Errorf("expected 1 entry for 'db', got %d", len(sm.entries["db"]))
+		}
+		if _, ok := sm.entries["cache"]; ok {
+			t.Error("unexpected entry for 'cache' (no schedule configured)")
+		}
+	})
+
+	t.Run("re-sync with updated schedule removes and re-adds entries", func(t *testing.T) {
+		updated := []ContainerConfig{
+			{Name: "app", ScheduleStart: "0 9 * * *", ScheduleStop: "0 21 * * *", StartTimeout: 60 * time.Second},
+		}
+		sm.Sync(updated)
+
+		if got := len(sm.cron.Entries()); got != 2 {
+			t.Errorf("after re-sync expected 2 cron entries, got %d", got)
+		}
+		if _, ok := sm.entries["db"]; ok {
+			t.Error("expected 'db' entry removed after re-sync")
+		}
+	})
+
+	t.Run("sync with nil removes all entries", func(t *testing.T) {
+		sm.Sync(nil)
+
+		if got := len(sm.cron.Entries()); got != 0 {
+			t.Errorf("after empty sync expected 0 cron entries, got %d", got)
+		}
+		if len(sm.entries) != 0 {
+			t.Errorf("after empty sync expected empty entries map, got %d keys", len(sm.entries))
+		}
+	})
 }
