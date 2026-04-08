@@ -63,7 +63,32 @@ func validateScheduleCompatibility(startExpr, stopExpr string) error {
 // Returns (true, zero) when no schedule is configured or only one direction is set.
 // Returns (false, nextStart) when both schedules are set and we are outside the window.
 func IsInScheduleWindow(cfg *ContainerConfig, now time.Time) (allowed bool, nextStart time.Time) {
-	return true, time.Time{}
+	if cfg.ScheduleStart == "" || cfg.ScheduleStop == "" {
+		return true, time.Time{}
+	}
+
+	startSched, err1 := cron.ParseStandard(cfg.ScheduleStart)
+	stopSched, err2 := cron.ParseStandard(cfg.ScheduleStop)
+	if err1 != nil || err2 != nil {
+		// Invalid expressions — don't block access.
+		return true, time.Time{}
+	}
+
+	prevStart, hasStart := prevFiring(startSched, now)
+	prevStop, hasStop := prevFiring(stopSched, now)
+
+	if !hasStart {
+		// No start has fired yet — before the first scheduled start.
+		return false, startSched.Next(now)
+	}
+	if !hasStop {
+		// Start fired but stop hasn't yet — we're in the window.
+		return true, time.Time{}
+	}
+	if prevStart.After(prevStop) {
+		return true, time.Time{}
+	}
+	return false, startSched.Next(now)
 }
 
 // prevFiring returns the most recent time the schedule fired at or before now,
