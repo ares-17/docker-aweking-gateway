@@ -39,6 +39,7 @@ type Server struct {
 	groupRouter  *GroupRouter
 	scheduler    *ScheduleManager
 	scheduleTZ   string
+	schedLoc     *time.Location  // resolved from scheduleTZ; never nil (defaults to time.Local)
 	httpServer   *http.Server
 }
 
@@ -48,10 +49,13 @@ func NewServer(manager *ContainerManager, scheduler *ScheduleManager, cfg *Gatew
 		return nil, fmt.Errorf("failed to parse templates: %w", err)
 	}
 
+	loc, _ := resolveLocation(cfg.Gateway.ScheduleTimezone) // already validated; error impossible
+
 	return &Server{
 		manager:      manager,
 		scheduler:    scheduler,
 		scheduleTZ:   cfg.Gateway.ScheduleTimezone,
+		schedLoc:     loc,
 		cfg:          cfg,
 		hostIndex:    BuildHostIndex(cfg),
 		groupIndex:   BuildGroupHostIndex(cfg),
@@ -131,6 +135,8 @@ func (s *Server) ReloadConfig(newCfg *GatewayConfig) {
 	defer s.configMu.Unlock()
 	s.cfg = newCfg
 	s.scheduleTZ = newCfg.Gateway.ScheduleTimezone
+	loc, _ := resolveLocation(newCfg.Gateway.ScheduleTimezone)
+	s.schedLoc = loc
 	s.hostIndex = BuildHostIndex(newCfg)
 	s.groupIndex = BuildGroupHostIndex(newCfg)
 	s.containerMap = BuildContainerMap(newCfg)
@@ -216,18 +222,40 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg := s.resolveConfig(r)
+	// Read cfg, scheduleTZ, and schedLoc atomically under a single lock to
+	// prevent a concurrent hot-reload from swapping the config between reads.
+	s.configMu.RLock()
+	var cfg *ContainerConfig
+	host := r.Host
+	if c, ok := s.hostIndex[host]; ok {
+		cfg = c
+	} else if idx := strings.LastIndex(host, ":"); idx != -1 {
+		if c, ok := s.hostIndex[host[:idx]]; ok {
+			cfg = c
+		}
+	}
+	if cfg == nil {
+		if name := r.URL.Query().Get("container"); name != "" {
+			for i := range s.cfg.Containers {
+				if s.cfg.Containers[i].Name == name {
+					cfg = &s.cfg.Containers[i]
+					break
+				}
+			}
+		}
+	}
+	tz := s.scheduleTZ
+	loc := s.schedLoc
+	s.configMu.RUnlock()
+
 	if cfg == nil {
 		http.NotFound(w, r)
 		return
 	}
 
 	// Schedule gate: block access outside the configured cron window.
-	s.configMu.RLock()
-	tz := s.scheduleTZ
-	s.configMu.RUnlock()
 	if allowed, nextStart := IsInScheduleWindow(cfg, time.Now(), tz); !allowed {
-		s.serveScheduledPage(w, r, cfg, nextStart)
+		s.serveScheduledPage(w, r, cfg, nextStart, loc)
 		return
 	}
 
@@ -706,10 +734,10 @@ func (s *Server) serveLoadingPage(w http.ResponseWriter, r *http.Request, cfg *C
 	}
 }
 
-func (s *Server) serveScheduledPage(w http.ResponseWriter, r *http.Request, cfg *ContainerConfig, nextStart time.Time) {
+func (s *Server) serveScheduledPage(w http.ResponseWriter, r *http.Request, cfg *ContainerConfig, nextStart time.Time, loc *time.Location) {
 	next := ""
 	if !nextStart.IsZero() {
-		next = nextStart.UTC().Format("Mon 02 Jan · 15:04")
+		next = nextStart.In(loc).Format("Mon 02 Jan · 15:04")
 	}
 	data := scheduledData{
 		ContainerName: cfg.Name,
