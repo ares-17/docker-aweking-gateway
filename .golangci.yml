@@ -1,0 +1,25 @@
+version: "2"
+
+linters:
+  enable:
+    - govet        # go vet checks (shadow, printf format, etc.)
+    - staticcheck  # broad static analysis (SA*, S1*, ST1*, QF*)
+    - ineffassign  # useless assignments
+    - unused       # unused code
+    - gosimple     # simplification suggestions
+    - misspell     # common English spelling mistakes in comments/strings
+    - bodyclose    # unclosed HTTP response bodies
+    - noctx        # HTTP requests without context
+
+linters-settings:
+  misspell:
+    locale: US
+
+issues:
+  exclude-rules:
+    # Relax rules in test files
+    - path: "_test\\.go"
+      linters:
+        - bodyclose
+  max-issues-per-linter: 0
+  max-same-issues: 0
