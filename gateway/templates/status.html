@@ -448,11 +448,11 @@
                     scheduleBlock = '<div class="mb-5 bg-red-950/20 rounded border border-red-900/40 p-3">'
                         + '<div class="flex items-center gap-2 mb-2 text-status-error">'
                         + '<span class="material-symbols-outlined" style="font-size:16px">event_busy</span>'
-                        + '<h4 class="text-[10px] font-bold uppercase tracking-widest">Scheduled Downtime</h4>'
+                        + '<h4 class="text-xs font-bold uppercase tracking-widest">Scheduled Downtime</h4>'
                         + '</div>'
                         + '<div class="flex flex-col gap-1">'
-                        + '<p class="text-[11px] dark:text-slate-300 text-slate-600">Container is suspended per schedule.</p>'
-                        + '<p class="text-[10px] font-mono dark:text-slate-500 text-slate-400 italic">' + esc(nextInfo) + '</p>'
+                        + '<p class="text-xs dark:text-slate-300 text-slate-600">Container is suspended per schedule.</p>'
+                        + '<p class="text-[11px] font-mono dark:text-slate-400 text-slate-500 italic">' + esc(nextInfo) + '</p>'
                         + '</div>'
                         + '</div>';
                 } else {
@@ -463,18 +463,18 @@
                     scheduleBlock = '<div class="mb-5 dark:bg-bg-dark/40 bg-slate-50 rounded-lg p-3 dark:border-border-dark/60 border-border-light/60 border">'
                         + '<div class="flex items-center gap-2 mb-2">'
                         + '<span class="material-symbols-outlined dark:text-slate-500 text-slate-400" style="font-size:16px">schedule</span>'
-                        + '<h4 class="text-[10px] font-bold dark:text-slate-400 text-slate-500 uppercase tracking-widest">Scheduled Activities' + tzLabel + '</h4>'
+                        + '<h4 class="text-xs font-bold dark:text-slate-400 text-slate-500 uppercase tracking-widest">Scheduled Activities' + tzLabel + '</h4>'
                         + '</div>'
                         + '<div class="flex flex-col gap-1.5">'
                         + '<div class="flex justify-between items-baseline">'
-                        + '<span class="text-xs font-mono text-primary/80">' + esc(c.schedule_start) + '</span>'
-                        + '<span class="text-[10px] font-mono dark:text-slate-500 text-slate-400">Auto-Wake</span>'
+                        + '<span class="text-sm font-mono text-primary/80">' + esc(c.schedule_start) + '</span>'
+                        + '<span class="text-xs font-mono dark:text-slate-500 text-slate-400">Auto-Wake</span>'
                         + '</div>'
                         + '<div class="flex justify-between items-baseline">'
-                        + '<span class="text-xs font-mono dark:text-slate-400 text-slate-500">' + esc(c.schedule_stop) + '</span>'
-                        + '<span class="text-[10px] font-mono dark:text-slate-500 text-slate-400">Auto-Stop</span>'
+                        + '<span class="text-sm font-mono dark:text-slate-400 text-slate-500">' + esc(c.schedule_stop) + '</span>'
+                        + '<span class="text-xs font-mono dark:text-slate-500 text-slate-400">Auto-Stop</span>'
                         + '</div>'
-                        + (nextInfo ? '<p class="text-[10px] font-mono dark:text-slate-500 text-slate-400 italic mt-0.5">' + esc(nextInfo) + '</p>' : '')
+                        + (nextInfo ? '<p class="text-[11px] font-mono dark:text-slate-400 text-slate-500 italic mt-0.5">' + esc(nextInfo) + '</p>' : '')
                         + '</div>'
                         + '</div>';
                 }
