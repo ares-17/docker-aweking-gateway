@@ -69,6 +69,11 @@ type GlobalConfig struct {
 	// AdminAuth configures optional authentication for admin endpoints.
 	// See AdminAuthConfig for details. (default: method "none")
 	AdminAuth AdminAuthConfig `yaml:"admin_auth"`
+	// ScheduleTimezone is the IANA timezone name used to interpret schedule_start
+	// and schedule_stop cron expressions (e.g. "Europe/Rome", "America/New_York").
+	// Default: "" uses the process's local timezone (time.Local).
+	// Overridable via SCHEDULE_TIMEZONE env var.
+	ScheduleTimezone string `yaml:"schedule_timezone"`
 }
 
 // ContainerConfig holds per-container settings
@@ -156,6 +161,10 @@ func LoadConfig() (*GatewayConfig, error) {
 		cfg.Gateway.AdminAuth.Token = envToken
 	}
 
+	if envTZ := os.Getenv("SCHEDULE_TIMEZONE"); envTZ != "" {
+		cfg.Gateway.ScheduleTimezone = envTZ
+	}
+
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid configuration: %w", err)
 	}
@@ -163,10 +172,23 @@ func LoadConfig() (*GatewayConfig, error) {
 	return &cfg, nil
 }
 
+// resolveLocation parses an IANA timezone name and returns the corresponding
+// *time.Location. Returns time.Local when name is empty.
+func resolveLocation(name string) (*time.Location, error) {
+	if name == "" {
+		return time.Local, nil
+	}
+	return time.LoadLocation(name)
+}
+
 // Validate checks if the loaded configuration is valid.
 func (c *GatewayConfig) Validate() error {
 	if c.Gateway.Port == "" {
 		return fmt.Errorf("gateway.port cannot be empty")
+	}
+
+	if _, err := resolveLocation(c.Gateway.ScheduleTimezone); err != nil {
+		return fmt.Errorf("schedule_timezone: invalid IANA timezone %q: %w", c.Gateway.ScheduleTimezone, err)
 	}
 
 	// Validate admin_auth settings.

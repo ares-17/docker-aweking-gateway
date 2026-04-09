@@ -579,6 +579,98 @@ func TestScheduleConfigValidation(t *testing.T) {
 	}
 }
 
+// ─── ScheduleTimezone ────────────────────────────────────────────────────────
+
+func TestScheduleTimezone(t *testing.T) {
+	base := func() *GatewayConfig {
+		return &GatewayConfig{
+			Gateway: GlobalConfig{Port: "8080"},
+			Containers: []ContainerConfig{
+				{Name: "app", Host: "app.local", TargetPort: "80"},
+			},
+		}
+	}
+
+	t.Run("empty timezone is valid (uses time.Local)", func(t *testing.T) {
+		cfg := base()
+		cfg.Gateway.ScheduleTimezone = ""
+		if err := cfg.Validate(); err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("valid IANA timezone accepted", func(t *testing.T) {
+		cfg := base()
+		cfg.Gateway.ScheduleTimezone = "Europe/Rome"
+		if err := cfg.Validate(); err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("invalid timezone returns error", func(t *testing.T) {
+		cfg := base()
+		cfg.Gateway.ScheduleTimezone = "Not/ATimezone"
+		if err := cfg.Validate(); err == nil {
+			t.Error("expected error for invalid timezone, got nil")
+		}
+	})
+}
+
+func TestResolveLocation(t *testing.T) {
+	t.Run("empty string returns time.Local", func(t *testing.T) {
+		loc, err := resolveLocation("")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if loc != time.Local {
+			t.Errorf("expected time.Local, got %v", loc)
+		}
+	})
+
+	t.Run("valid IANA name returns location", func(t *testing.T) {
+		loc, err := resolveLocation("Europe/Rome")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if loc.String() != "Europe/Rome" {
+			t.Errorf("expected Europe/Rome, got %v", loc)
+		}
+	})
+
+	t.Run("invalid name returns error", func(t *testing.T) {
+		_, err := resolveLocation("Not/ATimezone")
+		if err == nil {
+			t.Error("expected error for invalid timezone")
+		}
+	})
+}
+
+func TestLoadConfig_ScheduleTimezoneEnvVar(t *testing.T) {
+	yamlContent := `
+gateway:
+  port: "8080"
+containers:
+  - name: "app"
+    host: "app.local"
+    target_port: "80"
+`
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "config.yaml")
+	if err := os.WriteFile(path, []byte(yamlContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CONFIG_PATH", path)
+	t.Setenv("SCHEDULE_TIMEZONE", "Europe/Rome")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig() error: %v", err)
+	}
+	if cfg.Gateway.ScheduleTimezone != "Europe/Rome" {
+		t.Errorf("ScheduleTimezone = %q, want %q", cfg.Gateway.ScheduleTimezone, "Europe/Rome")
+	}
+}
+
 // ─── health_path in YAML ──────────────────────────────────────────────────────
 
 func TestLoadConfig_HealthPathField(t *testing.T) {
