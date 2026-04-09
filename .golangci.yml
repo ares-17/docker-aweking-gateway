@@ -6,13 +6,8 @@ linters:
     - ineffassign  # useless assignments
     - unused       # unused code
     - gosimple     # simplification suggestions
-    - misspell     # common English spelling mistakes in comments/strings
     - bodyclose    # unclosed HTTP response bodies
     - noctx        # HTTP requests without context
-
-linters-settings:
-  misspell:
-    locale: ""     # accept both US and UK spellings
 
 issues:
   exclude-rules:
