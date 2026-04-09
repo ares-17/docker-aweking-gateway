@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - 'LICENSE'
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - 'LICENSE'
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Cache vendor directory
+        id: cache-vendor
+        uses: actions/cache@v4
+        with:
+          path: vendor/
+          key: vendor-${{ hashFiles('go.sum') }}
+          restore-keys: vendor-
+
+      - name: Download dependencies
+        if: steps.cache-vendor.outputs.cache-hit != 'true'
+        run: go mod vendor
+
+      - name: Run tests
+        run: go test -mod=vendor -race -count=1 ./...
+
+      - name: Build binary
+        run: go build -mod=vendor -o docker-gateway .
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Cache vendor directory
+        id: cache-vendor
+        uses: actions/cache@v4
+        with:
+          path: vendor/
+          key: vendor-${{ hashFiles('go.sum') }}
+          restore-keys: vendor-
+
+      - name: Download dependencies
+        if: steps.cache-vendor.outputs.cache-hit != 'true'
+        run: go mod vendor
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.64
+          args: --timeout=5m
