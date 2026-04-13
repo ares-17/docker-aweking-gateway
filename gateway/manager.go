@@ -96,6 +96,18 @@ func (m *ContainerManager) GetLastSeen(containerName string) (time.Time, bool) {
 	return t, ok
 }
 
+// BuildReverseDeps returns, for each container D, the list of containers that
+// declare D in their DependsOn field (direct dependents only).
+func BuildReverseDeps(cfgs []ContainerConfig) map[string][]string {
+	rev := make(map[string][]string)
+	for _, cfg := range cfgs {
+		for _, dep := range cfg.DependsOn {
+			rev[dep] = append(rev[dep], cfg.Name)
+		}
+	}
+	return rev
+}
+
 // EnsureRunning checks whether a container is running and, if not, starts it.
 // Flow: docker start → wait for "running" state → TCP probe → mark ready.
 // Uses cfg.StartTimeout as the total budget for the entire sequence.

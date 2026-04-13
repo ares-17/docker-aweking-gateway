@@ -208,3 +208,76 @@ func TestCalcIdleRemaining(t *testing.T) {
 		})
 	}
 }
+
+// ─── BuildReverseDeps ─────────────────────────────────────────────────────────
+
+func TestBuildReverseDeps(t *testing.T) {
+	t.Run("empty config returns empty map", func(t *testing.T) {
+		got := BuildReverseDeps(nil)
+		if len(got) != 0 {
+			t.Errorf("expected empty map, got %v", got)
+		}
+	})
+
+	t.Run("no dependencies returns empty map", func(t *testing.T) {
+		cfgs := []ContainerConfig{
+			{Name: "app", Host: "app.local"},
+			{Name: "db"},
+		}
+		got := BuildReverseDeps(cfgs)
+		if len(got) != 0 {
+			t.Errorf("expected empty map, got %v", got)
+		}
+	})
+
+	t.Run("linear chain A→B→C", func(t *testing.T) {
+		cfgs := []ContainerConfig{
+			{Name: "app", Host: "app.local", DependsOn: []string{"api"}},
+			{Name: "api", DependsOn: []string{"db"}},
+			{Name: "db"},
+		}
+		got := BuildReverseDeps(cfgs)
+		if len(got["api"]) != 1 || got["api"][0] != "app" {
+			t.Errorf("got[api] = %v, want [app]", got["api"])
+		}
+		if len(got["db"]) != 1 || got["db"][0] != "api" {
+			t.Errorf("got[db] = %v, want [api]", got["db"])
+		}
+		if len(got["app"]) != 0 {
+			t.Errorf("got[app] = %v, want []", got["app"])
+		}
+	})
+
+	t.Run("diamond A→[B,C]→D: D has two dependents", func(t *testing.T) {
+		cfgs := []ContainerConfig{
+			{Name: "app", Host: "app.local", DependsOn: []string{"api", "worker"}},
+			{Name: "api", DependsOn: []string{"db"}},
+			{Name: "worker", DependsOn: []string{"db"}},
+			{Name: "db"},
+		}
+		got := BuildReverseDeps(cfgs)
+		dbDeps := got["db"]
+		if len(dbDeps) != 2 {
+			t.Fatalf("got[db] length = %d, want 2; got %v", len(dbDeps), dbDeps)
+		}
+		found := map[string]bool{"api": false, "worker": false}
+		for _, d := range dbDeps {
+			found[d] = true
+		}
+		if !found["api"] || !found["worker"] {
+			t.Errorf("got[db] = %v, want [api worker] (any order)", dbDeps)
+		}
+	})
+
+	t.Run("shared dep: A→D and B→D produces D:[A,B]", func(t *testing.T) {
+		cfgs := []ContainerConfig{
+			{Name: "app", Host: "app.local", DependsOn: []string{"db"}},
+			{Name: "other", Host: "other.local", DependsOn: []string{"db"}},
+			{Name: "db"},
+		}
+		got := BuildReverseDeps(cfgs)
+		if len(got["db"]) != 2 {
+			t.Errorf("got[db] length = %d, want 2; got %v", len(got["db"]), got["db"])
+		}
+	})
+}
