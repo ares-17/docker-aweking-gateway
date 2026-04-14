@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>Docker Awakening Gateway — Topology View</title>
+    <link href="https://fonts.googleapis.com" rel="preconnect" />
+    <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+        rel="stylesheet" />
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#2b75ee",
+                        "bg-dark": "#0d1117",
+                        "bg-light": "#f8fafc",
+                        "card-dark": "#161b22",
+                        "card-light": "#ffffff",
+                        "border-dark": "#30363d",
+                        "border-light": "#e2e8f0",
+                        "status-running": "#238636",
+                        "status-error": "#da3633",
+                        "status-stopped": "#8b949e",
+                        "status-starting": "#d29922",
+                    },
+                    fontFamily: {
+                        "display": ["Space Grotesk", "sans-serif"],
+                        "mono": ["JetBrains Mono", "monospace"],
+                    },
+                },
+            },
+        }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+    <style>
+        #graph-container .mermaid svg { max-width: 100%; height: auto; }
+    </style>
+</head>
+
+<body class="dark:bg-bg-dark bg-bg-light min-h-screen flex flex-col font-display transition-colors duration-200">
+
+    <!-- ─── Header ──────────────────────────────────────────────────────── -->
+    <header class="border-b dark:border-border-dark border-slate-200 dark:bg-card-dark bg-white px-4 sm:px-6 py-4 sticky top-0 z-50 transition-colors duration-200 shadow-[0_1px_3px_rgba(0,0,0,0.05)] dark:shadow-none">
+        <div class="max-w-7xl mx-auto flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="bg-primary/20 p-2 rounded-lg text-primary">
+                    <svg class="w-6 h-6" viewBox="0 -960 960 960" fill="currentColor">
+                        <path d="M440-183v-274L200-596v274l240 139Zm80 0 240-139v-274L520-457v274Zm-40-343 237-137-237-137-237 137 237 137ZM160-252q-19-11-29.5-29T120-321v-318q0-22 10.5-40t29.5-29l280-161q19-11 40-11t40 11l280 161q19 11 29.5 29t10.5 40v318q0 22-10.5 40T800-252L520-91q-19 11-40 11t-40-11L160-252Z"/>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="dark:text-white text-slate-900 text-xl font-bold tracking-tight">Docker Awakening Gateway</h1>
+                    <p class="text-xs dark:text-slate-500 text-slate-400 font-mono">/_topology</p>
+                </div>
+            </div>
+            <nav class="flex items-center gap-2">
+                <a href="/_status"
+                   class="px-3 py-1.5 text-sm font-medium rounded-md dark:text-slate-400 text-slate-600 dark:hover:bg-border-dark hover:bg-slate-100 transition-colors">
+                    Status Dashboard
+                </a>
+                <a href="/_topology"
+                   class="px-3 py-1.5 text-sm font-medium rounded-md bg-primary/10 text-primary border border-primary/30">
+                    Topology View
+                </a>
+            </nav>
+            <button onclick="toggleTheme()"
+                class="p-2 rounded-lg dark:bg-border-dark bg-slate-200 dark:text-white text-slate-700 transition-colors"
+                title="Toggle dark/light mode">
+                <svg id="theme-icon-dark" class="w-5 h-5" viewBox="0 -960 960 960" fill="currentColor">
+                    <path d="M480-120q-150 0-255-105T120-480q0-150 105-255t255-105q14 0 27.5 1t26.5 3q-41 29-65.5 75.5T444-660q0 90 63 153t153 63q55 0 101-24.5t75-65.5q2 13 3 26.5t1 27.5q0 150-105 255T480-120Z"/>
+                </svg>
+                <svg id="theme-icon-light" class="w-5 h-5 hidden" viewBox="0 -960 960 960" fill="currentColor">
+                    <path d="M480-360q50 0 85-35t35-85q0-50-35-85t-85-35q-50 0-85 35t-35 85q0 50 35 85t85 35Zm0 80q-83 0-141.5-58.5T280-480q0-83 58.5-141.5T480-680q83 0 141.5 58.5T680-480q0 83-58.5 141.5T480-280ZM200-440H40v-80h160v80Zm720 0H760v-80h160v80ZM440-760v-160h80v160h-80Zm0 720v-160h80v160h-80ZM256-650l-101-97 57-59 96 100-52 56Zm492 496-97-101 53-55 101 97-57 59Zm-98-550 97-101 59 57-100 96-56-52ZM154-212l101-97 55 53-97 101-59-57Z"/>
+                </svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- ─── Main ─────────────────────────────────────────────────────────── -->
+    <main class="flex-grow flex flex-col p-4 sm:p-6 min-h-0">
+        <div id="graph-container" class="flex-grow dark:bg-card-dark bg-white rounded-xl border dark:border-border-dark border-slate-200 p-6 overflow-auto">
+            <div class="mermaid">{{.MermaidGraph}}</div>
+        </div>
+
+        <!-- Legend -->
+        <div class="mt-3 flex flex-wrap items-center gap-4 text-xs font-mono dark:text-slate-400 text-slate-500">
+            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full" style="background:#238636"></span>Running</span>
+            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full" style="background:#8b949e"></span>Stopped</span>
+            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full" style="background:#d29922"></span>Starting</span>
+            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full" style="background:#da3633"></span>Failed</span>
+            <span class="flex items-center gap-1.5">
+                <span class="inline-block w-8 border-t-2 border-dashed dark:border-slate-500 border-slate-400"></span>
+                Depends on
+            </span>
+        </div>
+    </main>
+
+    <!-- ─── Detail panel ─────────────────────────────────────────────────── -->
+    <div id="panel"
+         class="hidden fixed right-0 top-0 h-full w-80 dark:bg-card-dark bg-white border-l dark:border-border-dark border-slate-200 shadow-2xl z-50 flex flex-col overflow-y-auto">
+        <div class="flex items-center justify-between px-4 py-3 border-b dark:border-border-dark border-slate-200 sticky top-0 dark:bg-card-dark bg-white">
+            <h2 id="panel-name" class="text-base font-bold dark:text-white text-slate-900 truncate"></h2>
+            <button onclick="closePanel()"
+                class="p-1.5 rounded-md dark:hover:bg-border-dark hover:bg-slate-100 dark:text-slate-400 text-slate-500"
+                title="Close">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+        <div class="px-4 py-4 space-y-4 text-sm">
+            <div class="flex items-center gap-2">
+                <span id="panel-status-dot" class="w-2.5 h-2.5 rounded-full flex-shrink-0"></span>
+                <span id="panel-status" class="font-semibold dark:text-white text-slate-800 capitalize"></span>
+            </div>
+            <dl class="space-y-3">
+                <div><dt class="text-xs uppercase tracking-wider dark:text-slate-500 text-slate-400 font-mono mb-0.5">Image</dt><dd id="panel-image" class="dark:text-slate-200 text-slate-700 font-mono text-xs break-all"></dd></div>
+                <div><dt class="text-xs uppercase tracking-wider dark:text-slate-500 text-slate-400 font-mono mb-0.5">Host</dt><dd id="panel-host" class="dark:text-slate-200 text-slate-700 font-mono text-xs"></dd></div>
+                <div><dt class="text-xs uppercase tracking-wider dark:text-slate-500 text-slate-400 font-mono mb-0.5">Port</dt><dd id="panel-port" class="dark:text-slate-200 text-slate-700 font-mono text-xs"></dd></div>
+                <div><dt class="text-xs uppercase tracking-wider dark:text-slate-500 text-slate-400 font-mono mb-0.5">Health Path</dt><dd id="panel-health" class="dark:text-slate-200 text-slate-700 font-mono text-xs"></dd></div>
+                <div id="panel-deps-row" class="hidden"><dt class="text-xs uppercase tracking-wider dark:text-slate-500 text-slate-400 font-mono mb-0.5">Depends On</dt><dd id="panel-deps" class="dark:text-slate-200 text-slate-700 font-mono text-xs"></dd></div>
+                <div><dt class="text-xs uppercase tracking-wider dark:text-slate-500 text-slate-400 font-mono mb-0.5">Uptime</dt><dd id="panel-uptime" class="dark:text-slate-200 text-slate-700 font-mono text-xs"></dd></div>
+                <div><dt class="text-xs uppercase tracking-wider dark:text-slate-500 text-slate-400 font-mono mb-0.5">Last Request</dt><dd id="panel-last-req" class="dark:text-slate-200 text-slate-700 font-mono text-xs"></dd></div>
+                <div id="panel-schedule-row" class="hidden"><dt class="text-xs uppercase tracking-wider dark:text-slate-500 text-slate-400 font-mono mb-0.5">Schedule</dt><dd id="panel-schedule" class="dark:text-slate-200 text-slate-700 font-mono text-xs"></dd></div>
+                <div><dt class="text-xs uppercase tracking-wider dark:text-slate-500 text-slate-400 font-mono mb-0.5">Idle Timeout</dt><dd id="panel-idle" class="dark:text-slate-200 text-slate-700 font-mono text-xs"></dd></div>
+            </dl>
+        </div>
+    </div>
+
+    <!-- ─── Scripts ──────────────────────────────────────────────────────── -->
+    <script>
+        const NODE_MAP = {{.NodeMapJSON}};
+        const DATA     = {{.DataJSON}};
+
+        // Mermaid — always dark theme so graph is readable on card-dark background.
+        mermaid.initialize({ startOnLoad: true, theme: 'dark', securityLevel: 'loose',
+            flowchart: { curve: 'basis', useMaxWidth: true } });
+
+        // Theme toggle (same localStorage key as status.html).
+        function toggleTheme() {
+            const dark = document.documentElement.classList.toggle('dark');
+            localStorage.setItem('dag-theme', dark ? 'dark' : 'light');
+            document.getElementById('theme-icon-dark').classList.toggle('hidden', !dark);
+            document.getElementById('theme-icon-light').classList.toggle('hidden', dark);
+        }
+        (function() {
+            const saved = localStorage.getItem('dag-theme');
+            if (saved === 'light') {
+                document.documentElement.classList.remove('dark');
+                document.getElementById('theme-icon-dark').classList.add('hidden');
+                document.getElementById('theme-icon-light').classList.remove('hidden');
+            }
+        })();
+
+        // Detail panel.
+        const STATUS_DOT = { running:'#238636', stopped:'#8b949e', starting:'#d29922', failed:'#da3633' };
+
+        function toDisplayClass(s) {
+            if (s === 'running') return 'running';
+            if (s === 'restarting') return 'starting';
+            if (s === 'dead' || s === 'removing') return 'failed';
+            return 'stopped';
+        }
+
+        function formatUptime(iso) {
+            if (!iso) return '—';
+            const s = Math.floor((Date.now() - new Date(iso)) / 1000);
+            if (s < 0)    return '—';
+            if (s < 60)   return s + 's';
+            if (s < 3600) return Math.floor(s/60) + 'm ' + (s%60) + 's';
+            if (s < 86400) return Math.floor(s/3600) + 'h ' + Math.floor((s%3600)/60) + 'm';
+            return Math.floor(s/86400) + 'd ' + Math.floor((s%86400)/3600) + 'h';
+        }
+
+        function formatTs(iso) {
+            return iso ? new Date(iso).toLocaleTimeString() : '—';
+        }
+
+        window.onNodeClick = function(nodeId) {
+            const name = NODE_MAP[nodeId];
+            if (!name) return;
+            const c = (DATA.containers || []).find(x => x.name === name);
+            if (!c) return;
+
+            const cls = toDisplayClass(c.status);
+            document.getElementById('panel-name').textContent            = c.name;
+            document.getElementById('panel-status-dot').style.background = STATUS_DOT[cls] || STATUS_DOT.stopped;
+            document.getElementById('panel-status').textContent          = c.status || 'unknown';
+            document.getElementById('panel-image').textContent           = c.image || '—';
+            document.getElementById('panel-host').textContent            = c.host || '—';
+            document.getElementById('panel-port').textContent            = c.target_port || '—';
+            document.getElementById('panel-health').textContent          = c.health_path || '—';
+            document.getElementById('panel-uptime').textContent          = formatUptime(c.started_at);
+            document.getElementById('panel-last-req').textContent        = formatTs(c.last_request);
+            document.getElementById('panel-idle').textContent            = c.idle_timeout || '—';
+
+            const deps = c.depends_on || [];
+            const depsRow = document.getElementById('panel-deps-row');
+            document.getElementById('panel-deps').textContent = deps.join(', ');
+            depsRow.classList.toggle('hidden', deps.length === 0);
+
+            const schedRow = document.getElementById('panel-schedule-row');
+            if (c.schedule_start && c.schedule_stop) {
+                document.getElementById('panel-schedule').textContent =
+                    'Start: ' + c.schedule_start + ' / Stop: ' + c.schedule_stop;
+                schedRow.classList.remove('hidden');
+            } else {
+                schedRow.classList.add('hidden');
+            }
+
+            document.getElementById('panel').classList.remove('hidden');
+        };
+
+        function closePanel() { document.getElementById('panel').classList.add('hidden'); }
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') closePanel(); });
+    </script>
+
+</body>
+</html>
