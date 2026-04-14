@@ -733,6 +733,7 @@ type statusAPIResponse struct {
 // ─── Topology page types ──────────────────────────────────────────────────────
 
 type topologyData struct {
+	Version      string
 	MermaidGraph template.HTML // Go-generated Mermaid source — not user input
 	NodeMapJSON  template.JS   // JSON: {"mermaidID": "containerName", ...}
 	DataJSON     template.JS   // JSON: topologyPayload
@@ -1053,6 +1054,7 @@ func (s *Server) handleTopology(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := topologyData{
+		Version:      gatewayVersion,
 		MermaidGraph: template.HTML(graphStr),
 		NodeMapJSON:  template.JS(nodeMapBytes),
 		DataJSON:     template.JS(payloadBytes),
