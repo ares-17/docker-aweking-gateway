@@ -964,11 +964,6 @@ func (s *Server) handleStatusWake(w http.ResponseWriter, r *http.Request) {
 
 // handleTopology serves the container dependency graph page.
 func (s *Server) handleTopology(w http.ResponseWriter, r *http.Request) {
-	if !s.rateLimiter.Allow(s.clientIP(r)) {
-		http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
-		return
-	}
-
 	ctx := r.Context()
 	cfg := s.GetConfig()
 
