@@ -62,9 +62,9 @@
         /* Post-processed node icons: always white (graph is always dark theme) */
         .node-si-icon { filter: brightness(0) invert(1); opacity: 0.85; }
 
-        /* Node interactivity */
+        /* Node interactivity + rounded corners (rx/ry as CSS props, Chrome 88+, FF 64+, Safari 13.1+) */
         .mermaid svg g.node { cursor: pointer; }
-        .mermaid svg g.node rect { transition: filter 0.15s; }
+        .mermaid svg g.node rect { rx: 10px; ry: 10px; transition: filter 0.15s; }
         .mermaid svg g.node:hover rect { filter: brightness(1.25); }
     </style>
 </head>
@@ -192,8 +192,11 @@
             <div class="flex items-center gap-3 min-w-0">
                 <div id="panel-icon-wrap"
                     class="w-8 h-8 rounded-lg dark:bg-primary/10 bg-blue-50 flex items-center justify-center dark:border-primary/20 border-blue-200 border flex-shrink-0">
-                    <img id="panel-icon" src="" alt="" class="w-4 h-4 si-icon"
-                        onerror="this.style.display='none';this.parentElement.innerHTML='<svg class=&quot;w-4 h-4 si-icon&quot; fill=&quot;currentColor&quot; viewBox=&quot;0 -960 960 960&quot;><use href=&quot;#icon-container&quot;/></svg>'" />
+                    <!-- img and fallback are both persistent — toggled via display, never innerHTML-replaced -->
+                    <img id="panel-icon" src="" alt="" class="w-4 h-4 si-icon" style="display:none" />
+                    <svg id="panel-icon-fallback" class="w-4 h-4 si-icon" fill="currentColor" viewBox="0 -960 960 960">
+                        <use href="#icon-container" />
+                    </svg>
                 </div>
                 <h2 id="panel-name"
                     class="text-sm font-bold dark:text-white text-slate-900 font-mono truncate"></h2>
@@ -425,12 +428,22 @@
             document.getElementById('panel-last-req').textContent = formatTs(c.last_request);
             document.getElementById('panel-idle').textContent = c.idle_timeout || '—';
 
-            // Icon in panel header
+            // Icon in panel header — use persistent img + fallback svg (no innerHTML mutation)
             var slug = (c.icon && c.icon.trim()) ? c.icon.trim() : 'docker';
             var iconEl = document.getElementById('panel-icon');
-            iconEl.src = SI_CDN + encodeURIComponent(slug) + '.svg';
-            iconEl.alt = c.name;
+            var iconFallback = document.getElementById('panel-icon-fallback');
             iconEl.style.display = '';
+            iconFallback.style.display = 'none';
+            iconEl.onerror = function () {
+                iconEl.style.display = 'none';
+                iconFallback.style.display = '';
+            };
+            iconEl.onload = function () {
+                iconEl.style.display = '';
+                iconFallback.style.display = 'none';
+            };
+            iconEl.alt = c.name;
+            iconEl.src = SI_CDN + encodeURIComponent(slug) + '.svg';
 
             var deps = c.depends_on || [];
             var depsRow = document.getElementById('panel-deps-row');
