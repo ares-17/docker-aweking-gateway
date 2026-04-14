@@ -120,7 +120,7 @@ func TestBuildMermaidGraph_Subgraph(t *testing.T) {
 		t.Errorf("expected subgraph declaration:\n%s", out)
 	}
 	start := strings.Index(out, "subgraph grp_backend")
-	block := out[start : start+strings.Index(out[start:], "end")]
+	block := out[start : start+strings.Index(out[start:], "\n  end")]
 	if !strings.Contains(block, "app1") || !strings.Contains(block, "app2") {
 		t.Errorf("expected members inside subgraph block:\n%s", block)
 	}
